@@ -1,0 +1,87 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const base = import.meta.env.BASE_URL;
+const sections = [
+  { href: `${base}players/`, icon: '👥', title: 'Players', description: 'Manage player profiles, upload photos, and view stats' },
+  { href: `${base}ranking/`, icon: '🏆', title: 'Ranking', description: 'Leaderboard sorted by MMR with win/loss records' },
+  { href: `${base}matches/`, icon: '🏸', title: 'Matches', description: 'Record singles and doubles match results' },
+  { href: `${base}matchmaking/`, icon: '⚖️', title: 'Matchmaking', description: 'Generate balanced team assignments for sessions' },
+  { href: `${base}bills/`, icon: '💰', title: 'Bills', description: 'Split court fees, shuttlecock costs, and dinner bills' },
+];
+---
+
+<Layout title="Home">
+  <section class="hero">
+    <h1>🏸 RTT Badminton Club</h1>
+    <p class="subtitle">Track matches, rankings, and bills — all in one place.</p>
+  </section>
+
+  <nav class="quick-links" aria-label="Quick links">
+    {sections.map((s) => (
+      <a href={s.href} class="card">
+        <span class="card-icon">{s.icon}</span>
+        <h2>{s.title}</h2>
+        <p>{s.description}</p>
+      </a>
+    ))}
+  </nav>
+</Layout>
+
+<style>
+  .hero {
+    text-align: center;
+    padding: 2rem 0 2.5rem;
+  }
+
+  .hero h1 {
+    font-size: 2rem;
+    color: var(--color-primary, #1b5e20);
+    margin-bottom: 0.5rem;
+  }
+
+  .subtitle {
+    color: var(--color-text-light, #555);
+    font-size: 1.1rem;
+  }
+
+  .quick-links {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1.25rem;
+  }
+
+  .card {
+    background: var(--color-surface, #fff);
+    border: 1px solid var(--color-border, #dde5dd);
+    border-radius: 10px;
+    padding: 1.5rem;
+    text-decoration: none;
+    color: inherit;
+    transition: box-shadow 0.2s, transform 0.15s;
+  }
+
+  .card:hover {
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+  }
+
+  .card-icon {
+    font-size: 2rem;
+    display: block;
+    margin-bottom: 0.5rem;
+  }
+
+  .card h2 {
+    font-size: 1.15rem;
+    margin-bottom: 0.35rem;
+    color: var(--color-primary, #1b5e20);
+  }
+
+  .card p {
+    font-size: 0.9rem;
+    color: var(--color-text-light, #555);
+    margin: 0;
+    line-height: 1.4;
+  }
+</style>

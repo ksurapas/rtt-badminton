@@ -1,0 +1,496 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Matchmaking">
+  <section class="page-header">
+    <h1>🎯 Matchmaking</h1>
+    <p class="subtitle">Generate balanced matchups from available players</p>
+  </section>
+
+  <section class="selection-section">
+    <h2>Select Players</h2>
+    <div id="player-checkboxes" class="checkbox-grid">
+      <p class="empty-state" id="no-players">No players registered yet. <a href={`${import.meta.env.BASE_URL}players/`}>Add players</a> first.</p>
+    </div>
+    <div class="selection-actions">
+      <span id="selected-count" class="selected-count">0 selected</span>
+      <button type="button" id="generate-btn" class="btn-primary" disabled>Generate Matchups</button>
+    </div>
+    <div id="validation-error" class="error-msg" role="alert"></div>
+  </section>
+
+  <section id="results-section" class="results-section" hidden>
+    <h2>Matchups</h2>
+    <div id="sit-out-banner" class="sit-out-banner" hidden></div>
+    <div id="match-cards"></div>
+  </section>
+</Layout>
+
+<script>
+  import { loadData } from '../lib/storage-service';
+  import { generateMatchups } from '../lib/matchmaker';
+  import type { Player, MatchAssignment } from '../lib/types';
+
+  // ── DOM refs ──────────────────────────────────────────────
+  const checkboxGrid = document.getElementById('player-checkboxes')!;
+  const noPlayers = document.getElementById('no-players')!;
+  const selectedCount = document.getElementById('selected-count')!;
+  const generateBtn = document.getElementById('generate-btn') as HTMLButtonElement;
+  const validationError = document.getElementById('validation-error')!;
+
+  const resultsSection = document.getElementById('results-section') as HTMLElement;
+  const sitOutBanner = document.getElementById('sit-out-banner')!;
+  const matchCards = document.getElementById('match-cards')!;
+
+  let players: Player[] = [];
+
+  // ── Load players and render checkboxes ────────────────────
+  function init() {
+    const data = loadData();
+    players = data.players;
+
+    if (players.length === 0) {
+      noPlayers.hidden = false;
+      return;
+    }
+
+    noPlayers.hidden = true;
+
+    for (const player of players) {
+      const label = document.createElement('label');
+      label.className = 'player-checkbox';
+
+      const img = player.profilePicture
+        ? `<img src="${player.profilePicture}" alt="" class="cb-thumb" loading="lazy" />`
+        : `<div class="cb-thumb cb-placeholder">🏸</div>`;
+
+      label.innerHTML = `
+        <input type="checkbox" value="${player.id}" class="player-cb" />
+        ${img}
+        <div class="cb-info">
+          <span class="cb-name">${player.name}</span>
+          <span class="cb-mmr">MMR ${player.mmr}</span>
+        </div>
+      `;
+
+      checkboxGrid.appendChild(label);
+    }
+
+    // Attach change listeners
+    checkboxGrid.querySelectorAll<HTMLInputElement>('.player-cb').forEach((cb) => {
+      cb.addEventListener('change', updateSelection);
+    });
+  }
+
+  function getSelectedIds(): string[] {
+    const checked = checkboxGrid.querySelectorAll<HTMLInputElement>('.player-cb:checked');
+    return Array.from(checked).map((cb) => cb.value);
+  }
+
+  function updateSelection() {
+    const ids = getSelectedIds();
+    const count = ids.length;
+    selectedCount.textContent = `${count} selected`;
+    generateBtn.disabled = count < 2;
+    validationError.textContent = '';
+  }
+
+  function getPlayerName(id: string): string {
+    return players.find((p) => p.id === id)?.name ?? 'Unknown';
+  }
+
+  // ── Generate matchups ─────────────────────────────────────
+  generateBtn.addEventListener('click', () => {
+    validationError.textContent = '';
+    const ids = getSelectedIds();
+
+    if (ids.length < 2) {
+      validationError.textContent = 'Please select at least 2 players.';
+      return;
+    }
+
+    // Build playerMMRs map
+    const playerMMRs: Record<string, number> = {};
+    for (const p of players) {
+      playerMMRs[p.id] = p.mmr;
+    }
+
+    try {
+      const result = generateMatchups(ids, playerMMRs);
+
+      // Show results
+      resultsSection.hidden = false;
+      matchCards.innerHTML = '';
+
+      // Sit-out banner
+      if (result.sittingOut.length > 0) {
+        const names = result.sittingOut.map(getPlayerName).join(', ');
+        sitOutBanner.innerHTML = `<span class="sit-out-icon">🪑</span> Sitting out: <strong>${names}</strong>`;
+        sitOutBanner.hidden = false;
+      } else {
+        sitOutBanner.hidden = true;
+      }
+
+      // Render match cards
+      result.matches.forEach((match: MatchAssignment, i: number) => {
+        const card = document.createElement('div');
+        card.className = 'matchup-card';
+
+        const modeLabel = match.type === 'singles' ? 'Singles' : 'Doubles';
+        const teamANames = match.teamA.map(getPlayerName).join(' & ');
+        const teamBNames = match.teamB.map(getPlayerName).join(' & ');
+        const probA = (match.teamAWinProbability * 100).toFixed(1);
+        const probB = (match.teamBWinProbability * 100).toFixed(1);
+        const mmrDiff = match.mmrDifference.toFixed(0);
+
+        card.innerHTML = `
+          <div class="matchup-header">
+            <span class="matchup-number">Match ${i + 1}</span>
+            <span class="matchup-mode">${modeLabel}</span>
+          </div>
+          <div class="matchup-teams">
+            <div class="matchup-team">
+              <span class="team-heading">Team A</span>
+              <span class="team-names">${teamANames}</span>
+              <span class="win-prob">${probA}%</span>
+            </div>
+            <span class="matchup-vs">vs</span>
+            <div class="matchup-team">
+              <span class="team-heading">Team B</span>
+              <span class="team-names">${teamBNames}</span>
+              <span class="win-prob">${probB}%</span>
+            </div>
+          </div>
+          <div class="matchup-footer">
+            <span class="mmr-diff">MMR Difference: <strong>${mmrDiff}</strong></span>
+          </div>
+        `;
+
+        matchCards.appendChild(card);
+      });
+
+      // Scroll to results
+      resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (err: any) {
+      validationError.textContent = err.message || 'An error occurred during matchmaking.';
+    }
+  });
+
+  // ── Init ──────────────────────────────────────────────────
+  init();
+</script>
+
+<style is:global>
+  .page-header {
+    text-align: center;
+    padding: 1.5rem 0 1rem;
+  }
+
+  .page-header h1 {
+    font-size: 1.75rem;
+    color: var(--color-primary, #1b5e20);
+    margin-bottom: 0.25rem;
+  }
+
+  .subtitle {
+    color: var(--color-text-light, #555);
+    font-size: 1rem;
+  }
+
+  /* ── Selection section ─────────────────────────────────── */
+  .selection-section {
+    max-width: 640px;
+    margin: 0 auto 2rem;
+    background: var(--color-surface, #fff);
+    border: 1px solid var(--color-border, #dde5dd);
+    border-radius: 12px;
+    padding: 1.5rem;
+  }
+
+  .selection-section h2 {
+    font-size: 1.15rem;
+    color: var(--color-primary, #1b5e20);
+    margin-bottom: 1rem;
+  }
+
+  .empty-state {
+    text-align: center;
+    color: var(--color-text-light, #555);
+    padding: 1.5rem 0;
+    font-size: 0.95rem;
+  }
+
+  .empty-state a {
+    color: var(--color-accent, #43a047);
+    text-decoration: underline;
+  }
+
+  /* ── Checkbox grid ─────────────────────────────────────── */
+  .checkbox-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .player-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--color-border, #dde5dd);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    user-select: none;
+  }
+
+  .player-checkbox:hover {
+    background: rgba(67, 160, 71, 0.04);
+    border-color: var(--color-accent, #43a047);
+  }
+
+  .player-checkbox:has(input:checked) {
+    background: rgba(67, 160, 71, 0.08);
+    border-color: var(--color-accent, #43a047);
+  }
+
+  .player-checkbox input[type='checkbox'] {
+    accent-color: var(--color-primary, #1b5e20);
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+
+  .cb-thumb {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 36px;
+    max-width: 36px;
+    max-height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: var(--color-bg, #f5f7f5);
+    border: 2px solid var(--color-border, #dde5dd);
+  }
+
+  .cb-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+  }
+
+  .cb-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .cb-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .cb-mmr {
+    font-size: 0.75rem;
+    color: var(--color-text-light, #555);
+  }
+
+  /* ── Selection actions ─────────────────────────────────── */
+  .selection-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .selected-count {
+    font-size: 0.85rem;
+    color: var(--color-text-light, #555);
+    font-weight: 600;
+  }
+
+  .btn-primary {
+    background: var(--color-primary, #1b5e20);
+    color: #fff;
+    border: none;
+    padding: 0.65rem 1.5rem;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, opacity 0.2s;
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background: var(--color-primary-light, #2e7d32);
+  }
+
+  .btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .error-msg {
+    color: #c62828;
+    font-size: 0.85rem;
+    min-height: 1.2em;
+  }
+
+  /* ── Results section ───────────────────────────────────── */
+  .results-section {
+    max-width: 640px;
+    margin: 0 auto 2rem;
+  }
+
+  .results-section h2 {
+    font-size: 1.25rem;
+    color: var(--color-primary, #1b5e20);
+    margin-bottom: 1rem;
+  }
+
+  /* ── Sit-out banner ────────────────────────────────────── */
+  .sit-out-banner {
+    background: #fff3e0;
+    border: 1px solid #ffe0b2;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+    color: #e65100;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .sit-out-icon {
+    font-size: 1.1rem;
+  }
+
+  /* ── Match cards ───────────────────────────────────────── */
+  .matchup-card {
+    background: var(--color-surface, #fff);
+    border: 1px solid var(--color-border, #dde5dd);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 0.75rem;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  }
+
+  .matchup-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+  }
+
+  .matchup-number {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--color-primary, #1b5e20);
+  }
+
+  .matchup-mode {
+    background: var(--color-bg, #f5f7f5);
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.03em;
+    color: var(--color-text-light, #555);
+  }
+
+  .matchup-teams {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .matchup-team {
+    flex: 1;
+    text-align: center;
+  }
+
+  .team-heading {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--color-text-light, #555);
+    margin-bottom: 0.2rem;
+  }
+
+  .team-names {
+    display: block;
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 0.3rem;
+  }
+
+  .win-prob {
+    display: inline-block;
+    background: var(--color-primary, #1b5e20);
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.15rem 0.5rem;
+    border-radius: 10px;
+  }
+
+  .matchup-vs {
+    font-weight: 700;
+    color: var(--color-text-light, #555);
+    font-size: 0.85rem;
+  }
+
+  .matchup-footer {
+    text-align: center;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--color-border, #dde5dd);
+  }
+
+  .mmr-diff {
+    font-size: 0.8rem;
+    color: var(--color-text-light, #555);
+  }
+
+  .mmr-diff strong {
+    color: var(--color-text, #1a1a1a);
+  }
+
+  /* ── Responsive ────────────────────────────────────────── */
+  @media (max-width: 480px) {
+    .checkbox-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .matchup-teams {
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .matchup-vs {
+      font-size: 0.75rem;
+    }
+
+    .selection-actions {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.5rem;
+    }
+
+    .selected-count {
+      text-align: center;
+    }
+  }
+</style>

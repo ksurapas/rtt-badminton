@@ -1,0 +1,785 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Bills">
+  <section class="page-header">
+    <h1>💰 Bill Splitter</h1>
+    <p class="subtitle">Split court, shuttlecock, and dinner costs</p>
+  </section>
+
+  <!-- Tab Navigation -->
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="court">Court</button>
+    <button class="tab-btn" data-tab="shuttlecock">Shuttlecock</button>
+    <button class="tab-btn" data-tab="dinner">Dinner</button>
+  </div>
+
+  <!-- Court Tab -->
+  <div class="tab-panel active" id="panel-court">
+    <section class="bill-form-section">
+      <h2>New Court Bill</h2>
+      <form id="court-form" novalidate>
+        <div class="form-group">
+          <label for="court-payer" class="group-label">Payer</label>
+          <select id="court-payer" required>
+            <option value="">— Select payer —</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="court-cost" class="group-label">Total Cost</label>
+          <input type="number" id="court-cost" min="0.01" step="0.01" placeholder="e.g. 600" required />
+        </div>
+        <div class="form-group">
+          <label class="group-label">Participants</label>
+          <div id="court-participants" class="checkbox-grid"></div>
+        </div>
+        <div id="court-error" class="error-msg" role="alert"></div>
+        <button type="submit" class="btn-primary">Split Bill</button>
+      </form>
+      <div id="court-result" class="split-result" hidden></div>
+    </section>
+    <section class="past-bills">
+      <h2>Past Court Bills</h2>
+      <div id="court-bills-list"><p class="empty-state">No court bills yet.</p></div>
+    </section>
+  </div>
+
+  <!-- Shuttlecock Tab -->
+  <div class="tab-panel" id="panel-shuttlecock">
+    <section class="bill-form-section">
+      <h2>New Shuttlecock Bill</h2>
+      <form id="shuttlecock-form" novalidate>
+        <div class="form-group">
+          <label for="shuttle-payer" class="group-label">Payer</label>
+          <select id="shuttle-payer" required>
+            <option value="">— Select payer —</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="shuttle-cost" class="group-label">Total Cost</label>
+          <input type="number" id="shuttle-cost" min="0.01" step="0.01" placeholder="e.g. 200" required />
+        </div>
+        <div class="form-group">
+          <label class="group-label">Participants</label>
+          <div id="shuttle-participants" class="checkbox-grid"></div>
+        </div>
+        <div id="shuttle-error" class="error-msg" role="alert"></div>
+        <button type="submit" class="btn-primary">Split Bill</button>
+      </form>
+      <div id="shuttle-result" class="split-result" hidden></div>
+    </section>
+    <section class="past-bills">
+      <h2>Past Shuttlecock Bills</h2>
+      <div id="shuttle-bills-list"><p class="empty-state">No shuttlecock bills yet.</p></div>
+    </section>
+  </div>
+
+  <!-- Dinner Tab -->
+  <div class="tab-panel" id="panel-dinner">
+    <section class="bill-form-section">
+      <h2>New Dinner Bill</h2>
+      <form id="dinner-form" novalidate>
+        <div class="form-group">
+          <label for="dinner-payer" class="group-label">Payer</label>
+          <select id="dinner-payer" required>
+            <option value="">— Select payer —</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="group-label">Participants</label>
+          <div id="dinner-participants"></div>
+          <button type="button" id="add-dinner-participant" class="btn-secondary">+ Add Participant</button>
+        </div>
+        <div class="form-group checkbox-row">
+          <label class="checkbox-label">
+            <input type="checkbox" id="dinner-vat" />
+            <span>VAT (7%)</span>
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="dinner-sc" />
+            <span>Service Charge (10%)</span>
+          </label>
+        </div>
+        <div id="dinner-error" class="error-msg" role="alert"></div>
+        <button type="submit" class="btn-primary">Split Bill</button>
+      </form>
+      <div id="dinner-result" class="split-result" hidden></div>
+    </section>
+    <section class="past-bills">
+      <h2>Past Dinner Bills</h2>
+      <div id="dinner-bills-list"><p class="empty-state">No dinner bills yet.</p></div>
+    </section>
+  </div>
+</Layout>
+
+<script>
+  import { calculateCourtSplit, calculateShuttlecockSplit, calculateDinnerSplit, validateBill } from '../lib/bill-splitter';
+  import { loadData, saveBills } from '../lib/storage-service';
+  import { generateId, formatDate } from '../lib/utils';
+  import type { Player, CourtBill, ShuttlecockBill, DinnerBill, DinnerParticipant, Bill } from '../lib/types';
+
+  // ── DOM refs ──────────────────────────────────────────────
+  const tabBtns = document.querySelectorAll<HTMLButtonElement>('.tab-btn');
+  const tabPanels = document.querySelectorAll<HTMLDivElement>('.tab-panel');
+
+  // Court
+  const courtForm = document.getElementById('court-form') as HTMLFormElement;
+  const courtPayer = document.getElementById('court-payer') as HTMLSelectElement;
+  const courtCost = document.getElementById('court-cost') as HTMLInputElement;
+  const courtParticipants = document.getElementById('court-participants')!;
+  const courtError = document.getElementById('court-error')!;
+  const courtResult = document.getElementById('court-result')!;
+  const courtBillsList = document.getElementById('court-bills-list')!;
+
+  // Shuttlecock
+  const shuttleForm = document.getElementById('shuttlecock-form') as HTMLFormElement;
+  const shuttlePayer = document.getElementById('shuttle-payer') as HTMLSelectElement;
+  const shuttleCost = document.getElementById('shuttle-cost') as HTMLInputElement;
+  const shuttleParticipants = document.getElementById('shuttle-participants')!;
+  const shuttleError = document.getElementById('shuttle-error')!;
+  const shuttleResult = document.getElementById('shuttle-result')!;
+  const shuttleBillsList = document.getElementById('shuttle-bills-list')!;
+
+  // Dinner
+  const dinnerForm = document.getElementById('dinner-form') as HTMLFormElement;
+  const dinnerPayer = document.getElementById('dinner-payer') as HTMLSelectElement;
+  const dinnerParticipantsDiv = document.getElementById('dinner-participants')!;
+  const dinnerVAT = document.getElementById('dinner-vat') as HTMLInputElement;
+  const dinnerSC = document.getElementById('dinner-sc') as HTMLInputElement;
+  const dinnerError = document.getElementById('dinner-error')!;
+  const dinnerResult = document.getElementById('dinner-result')!;
+  const dinnerBillsList = document.getElementById('dinner-bills-list')!;
+  const addDinnerBtn = document.getElementById('add-dinner-participant') as HTMLButtonElement;
+
+  // ── Helpers ───────────────────────────────────────────────
+
+  function getPlayers(): Player[] {
+    return loadData().players;
+  }
+
+  function getBills(): Bill[] {
+    return loadData().bills;
+  }
+
+  function populatePayerSelect(select: HTMLSelectElement) {
+    const players = getPlayers();
+    const current = select.value;
+    select.innerHTML = '<option value="">— Select payer —</option>';
+    for (const p of players) {
+      const opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = p.name;
+      select.appendChild(opt);
+    }
+    if (current && players.some((p) => p.name === current)) {
+      select.value = current;
+    }
+  }
+
+  function populateCheckboxes(container: HTMLElement) {
+    const players = getPlayers();
+    container.innerHTML = '';
+    for (const p of players) {
+      const label = document.createElement('label');
+      label.className = 'checkbox-label';
+      label.innerHTML = `<input type="checkbox" value="${p.name}" /><span>${p.name}</span>`;
+      container.appendChild(label);
+    }
+  }
+
+  function getCheckedNames(container: HTMLElement): string[] {
+    return Array.from(container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]:checked'))
+      .map((cb) => cb.value);
+  }
+
+  // ── Tab switching ─────────────────────────────────────────
+
+  tabBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      tabBtns.forEach((b) => b.classList.remove('active'));
+      tabPanels.forEach((p) => p.classList.remove('active'));
+      btn.classList.add('active');
+      const panel = document.getElementById(`panel-${btn.dataset.tab}`);
+      panel?.classList.add('active');
+    });
+  });
+
+  // ── Dinner participant rows ───────────────────────────────
+
+  let dinnerRowCount = 0;
+
+  function addDinnerRow(name = '', cost = '') {
+    dinnerRowCount++;
+    const row = document.createElement('div');
+    row.className = 'dinner-row';
+    row.innerHTML = `
+      <input type="text" placeholder="Name" class="dinner-name" value="${name}" required />
+      <input type="number" placeholder="Item cost" class="dinner-cost" min="0" step="0.01" value="${cost}" required />
+      <button type="button" class="btn-remove" aria-label="Remove participant">✕</button>
+    `;
+    row.querySelector('.btn-remove')!.addEventListener('click', () => {
+      row.remove();
+    });
+    dinnerParticipantsDiv.appendChild(row);
+  }
+
+  addDinnerBtn.addEventListener('click', () => addDinnerRow());
+
+  function getDinnerParticipants(): DinnerParticipant[] {
+    const rows = dinnerParticipantsDiv.querySelectorAll('.dinner-row');
+    const participants: DinnerParticipant[] = [];
+    rows.forEach((row) => {
+      const name = (row.querySelector('.dinner-name') as HTMLInputElement).value.trim();
+      const cost = parseFloat((row.querySelector('.dinner-cost') as HTMLInputElement).value) || 0;
+      if (name) {
+        participants.push({ name, itemCost: cost });
+      }
+    });
+    return participants;
+  }
+
+  // ── Render split result ───────────────────────────────────
+
+  function renderEqualSplitResult(container: HTMLElement, bill: CourtBill | ShuttlecockBill, result: ReturnType<typeof calculateCourtSplit>) {
+    container.hidden = false;
+    let html = `<h3>Split Result</h3>`;
+    html += `<p class="result-summary">Total: <strong>${bill.totalCost.toFixed(2)}</strong> · Per person: <strong>${result.totalPerPerson?.toFixed(2)}</strong></p>`;
+    if (result.shares.length === 0) {
+      html += `<p class="result-note">The payer covers the full amount — no one else owes.</p>`;
+    } else {
+      html += `<ul class="shares-list">`;
+      for (const s of result.shares) {
+        html += `<li><span class="share-name">${s.name}</span> owes <strong>${s.owes.toFixed(2)}</strong> to ${bill.payer}</li>`;
+      }
+      html += `</ul>`;
+    }
+    container.innerHTML = html;
+  }
+
+  function renderDinnerSplitResult(container: HTMLElement, bill: DinnerBill, result: ReturnType<typeof calculateDinnerSplit>) {
+    container.hidden = false;
+    let html = `<h3>Split Result</h3>`;
+    html += `<p class="result-summary">Subtotal: <strong>${result.subtotal?.toFixed(2)}</strong>`;
+    if (result.serviceChargeAmount && result.serviceChargeAmount > 0) {
+      html += ` · SC (10%): <strong>${result.serviceChargeAmount.toFixed(2)}</strong>`;
+    }
+    if (result.vatAmount && result.vatAmount > 0) {
+      html += ` · VAT (7%): <strong>${result.vatAmount.toFixed(2)}</strong>`;
+    }
+    html += ` · Grand Total: <strong>${result.grandTotal?.toFixed(2)}</strong></p>`;
+    if (result.shares.length === 0) {
+      html += `<p class="result-note">The payer covers the full amount — no one else owes.</p>`;
+    } else {
+      html += `<ul class="shares-list">`;
+      for (const s of result.shares) {
+        html += `<li><span class="share-name">${s.name}</span> owes <strong>${s.owes.toFixed(2)}</strong> to ${bill.payer}</li>`;
+      }
+      html += `</ul>`;
+    }
+    container.innerHTML = html;
+  }
+
+  // ── Render past bills ─────────────────────────────────────
+
+  function renderPastBills() {
+    const bills = getBills();
+
+    // Court
+    const courtBills = bills.filter((b): b is CourtBill => b.type === 'court')
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    courtBillsList.innerHTML = courtBills.length === 0
+      ? '<p class="empty-state">No court bills yet.</p>'
+      : courtBills.map((b) => renderPastEqualBill(b)).join('');
+
+    // Shuttlecock
+    const shuttleBills = bills.filter((b): b is ShuttlecockBill => b.type === 'shuttlecock')
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    shuttleBillsList.innerHTML = shuttleBills.length === 0
+      ? '<p class="empty-state">No shuttlecock bills yet.</p>'
+      : shuttleBills.map((b) => renderPastEqualBill(b)).join('');
+
+    // Dinner
+    const dinnerBills = bills.filter((b): b is DinnerBill => b.type === 'dinner')
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    dinnerBillsList.innerHTML = dinnerBills.length === 0
+      ? '<p class="empty-state">No dinner bills yet.</p>'
+      : dinnerBills.map((b) => renderPastDinnerBill(b)).join('');
+  }
+
+  function renderPastEqualBill(bill: CourtBill | ShuttlecockBill): string {
+    const result = bill.type === 'court' ? calculateCourtSplit(bill as CourtBill) : calculateShuttlecockSplit(bill as ShuttlecockBill);
+    return `
+      <div class="past-bill-card">
+        <div class="bill-meta">
+          <span class="bill-date">${formatDate(bill.createdAt)}</span>
+          <span class="bill-payer">Paid by ${bill.payer}</span>
+        </div>
+        <p class="bill-total">Total: ${bill.totalCost.toFixed(2)} · Per person: ${result.totalPerPerson?.toFixed(2)}</p>
+        <ul class="shares-list compact">${result.shares.map((s) => `<li>${s.name} owes ${s.owes.toFixed(2)}</li>`).join('')}</ul>
+      </div>`;
+  }
+
+  function renderPastDinnerBill(bill: DinnerBill): string {
+    const result = calculateDinnerSplit(bill);
+    return `
+      <div class="past-bill-card">
+        <div class="bill-meta">
+          <span class="bill-date">${formatDate(bill.createdAt)}</span>
+          <span class="bill-payer">Paid by ${bill.payer}</span>
+        </div>
+        <p class="bill-total">Grand Total: ${result.grandTotal?.toFixed(2)}${bill.applyServiceCharge ? ' (incl. SC)' : ''}${bill.applyVAT ? ' (incl. VAT)' : ''}</p>
+        <ul class="shares-list compact">${result.shares.map((s) => `<li>${s.name} owes ${s.owes.toFixed(2)}</li>`).join('')}</ul>
+      </div>`;
+  }
+
+  // ── Court form submit ─────────────────────────────────────
+
+  courtForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    courtError.textContent = '';
+    courtResult.hidden = true;
+
+    const payer = courtPayer.value;
+    const totalCost = parseFloat(courtCost.value) || 0;
+    const participants = getCheckedNames(courtParticipants);
+
+    const bill: CourtBill = {
+      id: generateId(),
+      type: 'court',
+      payer,
+      totalCost,
+      participants,
+      createdAt: new Date().toISOString(),
+    };
+
+    const validation = validateBill(bill);
+    if (!validation.valid) {
+      courtError.textContent = validation.errors.join(' ');
+      return;
+    }
+
+    const result = calculateCourtSplit(bill);
+    renderEqualSplitResult(courtResult, bill, result);
+
+    // Save
+    const bills = getBills();
+    bills.push(bill);
+    saveBills(bills);
+    renderPastBills();
+
+    // Reset form
+    courtForm.reset();
+    populateCheckboxes(courtParticipants);
+  });
+
+  // ── Shuttlecock form submit ───────────────────────────────
+
+  shuttleForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    shuttleError.textContent = '';
+    shuttleResult.hidden = true;
+
+    const payer = shuttlePayer.value;
+    const totalCost = parseFloat(shuttleCost.value) || 0;
+    const participants = getCheckedNames(shuttleParticipants);
+
+    const bill: ShuttlecockBill = {
+      id: generateId(),
+      type: 'shuttlecock',
+      payer,
+      totalCost,
+      participants,
+      createdAt: new Date().toISOString(),
+    };
+
+    const validation = validateBill(bill);
+    if (!validation.valid) {
+      shuttleError.textContent = validation.errors.join(' ');
+      return;
+    }
+
+    const result = calculateShuttlecockSplit(bill);
+    renderEqualSplitResult(shuttleResult, bill, result);
+
+    const bills = getBills();
+    bills.push(bill);
+    saveBills(bills);
+    renderPastBills();
+
+    shuttleForm.reset();
+    populateCheckboxes(shuttleParticipants);
+  });
+
+  // ── Dinner form submit ────────────────────────────────────
+
+  dinnerForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    dinnerError.textContent = '';
+    dinnerResult.hidden = true;
+
+    const payer = dinnerPayer.value;
+    const participants = getDinnerParticipants();
+
+    const bill: DinnerBill = {
+      id: generateId(),
+      type: 'dinner',
+      payer,
+      participants,
+      applyVAT: dinnerVAT.checked,
+      applyServiceCharge: dinnerSC.checked,
+      createdAt: new Date().toISOString(),
+    };
+
+    const validation = validateBill(bill);
+    if (!validation.valid) {
+      dinnerError.textContent = validation.errors.join(' ');
+      return;
+    }
+
+    const result = calculateDinnerSplit(bill);
+    renderDinnerSplitResult(dinnerResult, bill, result);
+
+    const bills = getBills();
+    bills.push(bill);
+    saveBills(bills);
+    renderPastBills();
+
+    // Reset
+    dinnerForm.reset();
+    dinnerParticipantsDiv.innerHTML = '';
+    dinnerRowCount = 0;
+  });
+
+  // ── Initial render ────────────────────────────────────────
+  populatePayerSelect(courtPayer);
+  populatePayerSelect(shuttlePayer);
+  populatePayerSelect(dinnerPayer);
+  populateCheckboxes(courtParticipants);
+  populateCheckboxes(shuttleParticipants);
+  renderPastBills();
+</script>
+
+<style is:global>
+  .page-header {
+    text-align: center;
+    padding: 1.5rem 0 1rem;
+  }
+
+  .page-header h1 {
+    font-size: 1.75rem;
+    color: var(--color-primary, #1b5e20);
+    margin-bottom: 0.25rem;
+  }
+
+  .subtitle {
+    color: var(--color-text-light, #555);
+    font-size: 1rem;
+  }
+
+  /* ── Tabs ──────────────────────────────────────────────── */
+  .tabs {
+    display: flex;
+    gap: 0;
+    border: 1px solid var(--color-border, #dde5dd);
+    border-radius: 8px;
+    overflow: hidden;
+    max-width: 520px;
+    margin: 0 auto 1.5rem;
+  }
+
+  .tab-btn {
+    flex: 1;
+    padding: 0.65rem 1rem;
+    border: none;
+    background: var(--color-bg, #f5f7f5);
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+    color: var(--color-text-light, #555);
+  }
+
+  .tab-btn.active {
+    background: var(--color-primary, #1b5e20);
+    color: #fff;
+  }
+
+  .tab-btn:not(.active):hover {
+    background: var(--color-border, #dde5dd);
+  }
+
+  .tab-panel {
+    display: none;
+  }
+
+  .tab-panel.active {
+    display: block;
+  }
+
+  /* ── Form section ──────────────────────────────────────── */
+  .bill-form-section {
+    max-width: 520px;
+    margin: 0 auto 2rem;
+    background: var(--color-surface, #fff);
+    border: 1px solid var(--color-border, #dde5dd);
+    border-radius: 12px;
+    padding: 1.5rem;
+  }
+
+  .bill-form-section h2 {
+    font-size: 1.15rem;
+    color: var(--color-primary, #1b5e20);
+    margin-bottom: 1rem;
+  }
+
+  .form-group {
+    margin-bottom: 1.25rem;
+  }
+
+  .group-label {
+    display: block;
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 0.4rem;
+  }
+
+  select,
+  input[type='number'],
+  input[type='text'] {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--color-border, #dde5dd);
+    border-radius: 6px;
+    font-size: 0.95rem;
+    outline: none;
+    background: #fff;
+    transition: border-color 0.2s;
+  }
+
+  select:focus,
+  input:focus {
+    border-color: var(--color-accent, #43a047);
+    box-shadow: 0 0 0 3px rgba(67, 160, 71, 0.15);
+  }
+
+  /* ── Checkboxes ────────────────────────────────────────── */
+  .checkbox-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.9rem;
+    cursor: pointer;
+    padding: 0.3rem 0.6rem;
+    border: 1px solid var(--color-border, #dde5dd);
+    border-radius: 6px;
+    transition: background 0.15s;
+  }
+
+  .checkbox-label:has(input:checked) {
+    background: rgba(27, 94, 32, 0.08);
+    border-color: var(--color-accent, #43a047);
+  }
+
+  .checkbox-label input[type='checkbox'] {
+    width: auto;
+    accent-color: var(--color-primary, #1b5e20);
+  }
+
+  .checkbox-row {
+    display: flex;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+  }
+
+  /* ── Dinner rows ───────────────────────────────────────── */
+  .dinner-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    align-items: center;
+  }
+
+  .dinner-row .dinner-name {
+    flex: 2;
+  }
+
+  .dinner-row .dinner-cost {
+    flex: 1;
+  }
+
+  .btn-remove {
+    background: none;
+    border: 1px solid #e57373;
+    color: #c62828;
+    border-radius: 6px;
+    padding: 0.4rem 0.6rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: background 0.15s;
+  }
+
+  .btn-remove:hover {
+    background: #ffebee;
+  }
+
+  .btn-secondary {
+    background: var(--color-bg, #f5f7f5);
+    border: 1px solid var(--color-border, #dde5dd);
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+    margin-top: 0.25rem;
+  }
+
+  .btn-secondary:hover {
+    background: var(--color-border, #dde5dd);
+  }
+
+  /* ── Error / Button ────────────────────────────────────── */
+  .error-msg {
+    color: #c62828;
+    font-size: 0.85rem;
+    min-height: 1.2em;
+    margin-bottom: 0.75rem;
+  }
+
+  .btn-primary {
+    width: 100%;
+    background: var(--color-primary, #1b5e20);
+    color: #fff;
+    border: none;
+    padding: 0.7rem 1.5rem;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .btn-primary:hover {
+    background: var(--color-primary-light, #2e7d32);
+  }
+
+  /* ── Split result ──────────────────────────────────────── */
+  .split-result {
+    margin-top: 1.25rem;
+    padding: 1rem 1.25rem;
+    background: #e8f5e9;
+    border: 1px solid #a5d6a7;
+    border-radius: 10px;
+  }
+
+  .split-result h3 {
+    font-size: 1rem;
+    color: var(--color-primary, #1b5e20);
+    margin-bottom: 0.5rem;
+  }
+
+  .result-summary {
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+    color: var(--color-text, #1a1a1a);
+  }
+
+  .result-note {
+    font-size: 0.85rem;
+    color: var(--color-text-light, #555);
+    font-style: italic;
+  }
+
+  .shares-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .shares-list li {
+    padding: 0.35rem 0;
+    font-size: 0.9rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  }
+
+  .shares-list li:last-child {
+    border-bottom: none;
+  }
+
+  .share-name {
+    font-weight: 600;
+  }
+
+  /* ── Past bills ────────────────────────────────────────── */
+  .past-bills {
+    max-width: 520px;
+    margin: 0 auto 2rem;
+  }
+
+  .past-bills h2 {
+    font-size: 1.15rem;
+    color: var(--color-primary, #1b5e20);
+    margin-bottom: 0.75rem;
+  }
+
+  .empty-state {
+    text-align: center;
+    color: var(--color-text-light, #555);
+    padding: 1.5rem 0;
+    font-size: 0.95rem;
+  }
+
+  .past-bill-card {
+    background: var(--color-surface, #fff);
+    border: 1px solid var(--color-border, #dde5dd);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 0.75rem;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  }
+
+  .bill-meta {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.4rem;
+    font-size: 0.8rem;
+    color: var(--color-text-light, #555);
+  }
+
+  .bill-payer {
+    font-weight: 600;
+  }
+
+  .bill-total {
+    font-size: 0.9rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .shares-list.compact li {
+    font-size: 0.85rem;
+    padding: 0.2rem 0;
+  }
+
+  @media (max-width: 480px) {
+    .dinner-row {
+      flex-wrap: wrap;
+    }
+
+    .dinner-row .dinner-name,
+    .dinner-row .dinner-cost {
+      flex: 1 1 100%;
+    }
+
+    .checkbox-row {
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+  }
+</style>

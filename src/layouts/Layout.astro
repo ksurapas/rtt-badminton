@@ -1,0 +1,212 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="RTT Badminton Club Manager" />
+    <link rel="icon" type="image/svg+xml" href={`${import.meta.env.BASE_URL}favicon.svg`} />
+    <title>{title} | RTT Badminton</title>
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="nav-container">
+        <a href={import.meta.env.BASE_URL} class="nav-brand">🏸 RTT Badminton</a>
+        <button class="nav-toggle" aria-label="Toggle navigation" id="nav-toggle">
+          <span class="hamburger"></span>
+        </button>
+        <ul class="nav-links" id="nav-links">
+          <li><a href={import.meta.env.BASE_URL}>Home</a></li>
+          <li><a href={`${import.meta.env.BASE_URL}players/`}>Players</a></li>
+          <li><a href={`${import.meta.env.BASE_URL}ranking/`}>Ranking</a></li>
+          <li><a href={`${import.meta.env.BASE_URL}matches/`}>Matches</a></li>
+          <li><a href={`${import.meta.env.BASE_URL}matchmaking/`}>Matchmaking</a></li>
+          <li><a href={`${import.meta.env.BASE_URL}bills/`}>Bills</a></li>
+        </ul>
+      </div>
+    </nav>
+
+    <main class="main-content">
+      <slot />
+    </main>
+
+    <footer class="footer">
+      <p>&copy; {new Date().getFullYear()} RTT Badminton Club</p>
+    </footer>
+
+    <script>
+      const toggle = document.getElementById('nav-toggle');
+      const links = document.getElementById('nav-links');
+      toggle?.addEventListener('click', () => {
+        links?.classList.toggle('open');
+      });
+    </script>
+
+    <style>
+      :root {
+        --color-primary: #1b5e20;
+        --color-primary-light: #2e7d32;
+        --color-primary-dark: #0d3311;
+        --color-accent: #43a047;
+        --color-bg: #f5f7f5;
+        --color-surface: #ffffff;
+        --color-text: #1a1a1a;
+        --color-text-light: #555;
+        --color-border: #dde5dd;
+        --nav-height: 60px;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: var(--color-bg);
+        color: var(--color-text);
+      }
+
+      body {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .navbar {
+        background: var(--color-primary);
+        color: #fff;
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      }
+
+      .nav-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 1rem;
+        height: var(--nav-height);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .nav-brand {
+        color: #fff;
+        text-decoration: none;
+        font-size: 1.25rem;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .nav-links {
+        list-style: none;
+        display: flex;
+        gap: 0.25rem;
+      }
+
+      .nav-links a {
+        color: rgba(255, 255, 255, 0.85);
+        text-decoration: none;
+        padding: 0.5rem 0.75rem;
+        border-radius: 6px;
+        font-size: 0.95rem;
+        transition: background 0.2s, color 0.2s;
+      }
+
+      .nav-links a:hover {
+        background: rgba(255, 255, 255, 0.15);
+        color: #fff;
+      }
+
+      .nav-toggle {
+        display: none;
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 0.5rem;
+      }
+
+      .hamburger,
+      .hamburger::before,
+      .hamburger::after {
+        display: block;
+        width: 24px;
+        height: 2px;
+        background: #fff;
+        border-radius: 2px;
+        position: relative;
+        transition: transform 0.2s;
+      }
+
+      .hamburger::before,
+      .hamburger::after {
+        content: '';
+        position: absolute;
+        left: 0;
+      }
+
+      .hamburger::before {
+        top: -7px;
+      }
+
+      .hamburger::after {
+        top: 7px;
+      }
+
+      .main-content {
+        flex: 1;
+        max-width: 1200px;
+        width: 100%;
+        margin: 0 auto;
+        padding: 2rem 1rem;
+      }
+
+      .footer {
+        background: var(--color-primary-dark);
+        color: rgba(255, 255, 255, 0.7);
+        text-align: center;
+        padding: 1rem;
+        font-size: 0.85rem;
+      }
+
+      @media (max-width: 768px) {
+        .nav-toggle {
+          display: block;
+        }
+
+        .nav-links {
+          display: none;
+          position: absolute;
+          top: var(--nav-height);
+          left: 0;
+          right: 0;
+          background: var(--color-primary);
+          flex-direction: column;
+          padding: 0.5rem 1rem 1rem;
+          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .nav-links.open {
+          display: flex;
+        }
+
+        .nav-links a {
+          padding: 0.75rem;
+          display: block;
+        }
+      }
+    </style>
+  </body>
+</html>

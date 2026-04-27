@@ -1,0 +1,300 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Ranking">
+  <section class="page-header">
+    <h1>🏆 Leaderboard</h1>
+    <p class="subtitle">Players ranked by MMR</p>
+  </section>
+
+  <div id="ranking-container">
+    <p class="empty-state" id="empty-state">No players registered yet.</p>
+  </div>
+</Layout>
+
+<script>
+  import { loadData } from '../lib/storage-service';
+  import { sortPlayersByRanking } from '../lib/ranking';
+  import { DEFAULT_PLACEHOLDER_IMAGE } from '../lib/utils';
+  import type { Player } from '../lib/types';
+
+  const container = document.getElementById('ranking-container')!;
+  const emptyState = document.getElementById('empty-state')!;
+
+  function render() {
+    const { players } = loadData();
+    const sorted = sortPlayersByRanking(players);
+
+    if (sorted.length === 0) {
+      emptyState.hidden = false;
+      return;
+    }
+
+    emptyState.hidden = true;
+
+    const table = document.createElement('table');
+    table.className = 'ranking-table';
+    table.setAttribute('role', 'table');
+
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th class="col-rank">#</th>
+          <th class="col-player">Player</th>
+          <th class="col-mmr">MMR</th>
+          <th class="col-wins">W</th>
+          <th class="col-losses">L</th>
+        </tr>
+      </thead>
+    `;
+
+    const tbody = document.createElement('tbody');
+
+    sorted.forEach((player: Player, index: number) => {
+      const rank = index + 1;
+      const row = document.createElement('tr');
+
+      if (rank === 1) row.classList.add('rank-gold');
+      else if (rank === 2) row.classList.add('rank-silver');
+      else if (rank === 3) row.classList.add('rank-bronze');
+
+      const imgSrc = player.profilePicture ?? DEFAULT_PLACEHOLDER_IMAGE;
+
+      row.innerHTML = `
+        <td class="col-rank">
+          <span class="rank-number">${rank}</span>
+        </td>
+        <td class="col-player">
+          <div class="player-info">
+            <img src="${imgSrc}" alt="${player.name}" class="player-thumb" loading="lazy" />
+            <span class="player-name">${player.name}</span>
+          </div>
+        </td>
+        <td class="col-mmr"><span class="mmr-value">${player.mmr}</span></td>
+        <td class="col-wins">${player.wins}</td>
+        <td class="col-losses">${player.losses}</td>
+      `;
+
+      tbody.appendChild(row);
+    });
+
+    table.appendChild(tbody);
+    container.appendChild(table);
+  }
+
+  render();
+</script>
+
+<style is:global>
+  .page-header {
+    text-align: center;
+    padding: 1.5rem 0 1rem;
+  }
+
+  .page-header h1 {
+    font-size: 1.75rem;
+    color: var(--color-primary, #1b5e20);
+    margin-bottom: 0.25rem;
+  }
+
+  .subtitle {
+    color: var(--color-text-light, #555);
+    font-size: 1rem;
+  }
+
+  .empty-state {
+    text-align: center;
+    color: var(--color-text-light, #555);
+    padding: 2rem 0;
+    font-size: 0.95rem;
+  }
+
+  /* ── Table ──────────────────────────────────────────────── */
+  .ranking-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--color-surface, #fff);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+
+  .ranking-table thead {
+    background: var(--color-primary, #1b5e20);
+    color: #fff;
+  }
+
+  .ranking-table th {
+    padding: 0.75rem 1rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    text-align: center;
+    color: #fff;
+  }
+
+  .ranking-table th.col-player {
+    text-align: left;
+  }
+
+  .ranking-table td {
+    padding: 0.65rem 1rem;
+    border-bottom: 1px solid var(--color-border, #dde5dd);
+    font-size: 0.95rem;
+    vertical-align: middle;
+    text-align: center;
+  }
+
+  .ranking-table td.col-player {
+    text-align: left;
+  }
+
+  .ranking-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  .ranking-table tbody tr:hover {
+    background: rgba(67, 160, 71, 0.04);
+  }
+
+  /* ── Rank column ────────────────────────────────────────── */
+  .col-rank {
+    width: 56px;
+    text-align: center;
+  }
+
+  .rank-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    font-weight: 700;
+    font-size: 0.9rem;
+    background: var(--color-bg, #f5f7f5);
+    color: var(--color-text, #1a1a1a);
+  }
+
+  /* ── Top 3 highlights ──────────────────────────────────── */
+  .rank-gold {
+    background: rgba(255, 215, 0, 0.08);
+  }
+
+  .rank-gold .rank-number {
+    background: #FFD700;
+    color: #5a4800;
+  }
+
+  .rank-gold td:first-child {
+    box-shadow: inset 4px 0 0 #FFD700;
+  }
+
+  .rank-silver {
+    background: rgba(192, 192, 192, 0.1);
+  }
+
+  .rank-silver .rank-number {
+    background: #C0C0C0;
+    color: #3a3a3a;
+  }
+
+  .rank-silver td:first-child {
+    box-shadow: inset 4px 0 0 #C0C0C0;
+  }
+
+  .rank-bronze {
+    background: rgba(205, 127, 50, 0.08);
+  }
+
+  .rank-bronze .rank-number {
+    background: #CD7F32;
+    color: #fff;
+  }
+
+  .rank-bronze td:first-child {
+    box-shadow: inset 4px 0 0 #CD7F32;
+  }
+
+  /* ── Player info cell ──────────────────────────────────── */
+  .player-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .player-thumb {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    max-width: 40px;
+    max-height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--color-bg, #f5f7f5);
+    border: 2px solid var(--color-border, #dde5dd);
+    flex-shrink: 0;
+  }
+
+  .player-name {
+    font-weight: 600;
+  }
+
+  /* ── MMR column ─────────────────────────────────────────── */
+  .col-mmr {
+    text-align: center;
+  }
+
+  .mmr-value {
+    display: inline-block;
+    background: var(--color-primary, #1b5e20);
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.2rem 0.6rem;
+    border-radius: 12px;
+  }
+
+  /* ── W/L columns ────────────────────────────────────────── */
+  .col-wins,
+  .col-losses {
+    text-align: center;
+    width: 60px;
+    font-weight: 600;
+  }
+
+  .col-wins {
+    color: var(--color-primary, #1b5e20);
+  }
+
+  .col-losses {
+    color: #c62828;
+  }
+
+  /* ── Responsive ─────────────────────────────────────────── */
+  @media (max-width: 600px) {
+    .ranking-table th,
+    .ranking-table td {
+      padding: 0.5rem 0.5rem;
+      font-size: 0.85rem;
+    }
+
+    .player-thumb {
+      width: 32px;
+      height: 32px;
+    }
+
+    .col-rank {
+      width: 40px;
+    }
+
+    .rank-number {
+      width: 26px;
+      height: 26px;
+      font-size: 0.8rem;
+    }
+  }
+</style>

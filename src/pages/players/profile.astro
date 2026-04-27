@@ -1,0 +1,215 @@
+---
+import Layout from '../../layouts/Layout.astro';
+---
+
+<Layout title="Player Profile">
+  <section class="hero-banner" id="hero-banner">
+    <div class="hero-gradient"></div>
+    <div class="hero-content">
+      <div class="hero-photo-wrapper">
+        <img id="hero-photo" src="" alt="Player profile photo" class="hero-photo" />
+      </div>
+      <h1 class="hero-name" id="hero-name"></h1>
+    </div>
+  </section>
+
+  <section class="stats-row" id="stats-row">
+    <div class="stat-card">
+      <span class="stat-value" id="stat-mmr">—</span>
+      <span class="stat-label">MMR</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-value" id="stat-rank">—</span>
+      <span class="stat-label">Rank</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-value" id="stat-record">—</span>
+      <span class="stat-label">W / L</span>
+    </div>
+  </section>
+
+  <section class="match-history-section">
+    <h2>Match History</h2>
+    <div id="match-history">
+      <p class="empty-state" id="empty-history">Loading…</p>
+    </div>
+  </section>
+
+  <section class="danger-zone" id="danger-zone" hidden>
+    <h2>Danger Zone</h2>
+    <p>Permanently remove this player and all their data.</p>
+    <button type="button" id="delete-player-btn" class="btn-delete">Delete Player</button>
+  </section>
+
+  <div id="not-found" class="not-found" hidden>
+    <h2>Player not found</h2>
+    <p>The player you're looking for doesn't exist.</p>
+    <a href={`${import.meta.env.BASE_URL}players/`} class="btn-back">← Back to Players</a>
+  </div>
+</Layout>
+
+<script>
+  import { loadData, saveData } from '../../lib/storage-service';
+  import { sortPlayersByRanking, getMatchHistoryForPlayer } from '../../lib/ranking';
+  import { formatDate, DEFAULT_PLACEHOLDER_IMAGE } from '../../lib/utils';
+  import type { Player, MatchRecord } from '../../lib/types';
+
+  function formatBWFName(fullName: string): string {
+    const parts = fullName.trim().split(/\s+/);
+    if (parts.length <= 1) return fullName.toUpperCase();
+    const lastName = parts[parts.length - 1].toUpperCase();
+    const firstNames = parts.slice(0, -1).join(' ');
+    return `${firstNames} ${lastName}`;
+  }
+
+  function getPlayerName(id: string, players: Player[]): string {
+    return players.find((p) => p.id === id)?.name ?? 'Unknown';
+  }
+
+  function getMMRDelta(playerId: string, match: MatchRecord): number {
+    return match.mmrChanges.find((c) => c.playerId === playerId)?.delta ?? 0;
+  }
+
+  function didPlayerWin(playerId: string, match: MatchRecord): boolean {
+    const winningTeam = match.winner === 'teamA' ? match.teamA : match.teamB;
+    return winningTeam.includes(playerId);
+  }
+
+  function getOpponentIds(playerId: string, match: MatchRecord): string[] {
+    if (match.teamA.includes(playerId)) return match.teamB;
+    return match.teamA;
+  }
+
+  // ── Extract player ID from query parameter ────────────────
+  const params = new URLSearchParams(window.location.search);
+  const playerId = params.get('id') ?? '';
+
+  const heroBanner = document.getElementById('hero-banner')!;
+  const heroPhoto = document.getElementById('hero-photo') as HTMLImageElement;
+  const heroName = document.getElementById('hero-name')!;
+  const statMmr = document.getElementById('stat-mmr')!;
+  const statRank = document.getElementById('stat-rank')!;
+  const statRecord = document.getElementById('stat-record')!;
+  const statsRow = document.getElementById('stats-row')!;
+  const matchHistoryContainer = document.getElementById('match-history')!;
+  const emptyHistory = document.getElementById('empty-history')!;
+  const notFound = document.getElementById('not-found')!;
+  const historySection = document.querySelector('.match-history-section') as HTMLElement;
+
+  const data = loadData();
+  const player = data.players.find((p) => p.id === playerId);
+
+  if (!player) {
+    heroBanner.hidden = true;
+    statsRow.hidden = true;
+    historySection.hidden = true;
+    notFound.hidden = false;
+  } else {
+    heroPhoto.src = player.profilePicture ?? DEFAULT_PLACEHOLDER_IMAGE;
+    heroPhoto.alt = `${player.name} profile photo`;
+    heroName.textContent = formatBWFName(player.name);
+
+    const ranked = sortPlayersByRanking(data.players);
+    const rankPosition = ranked.findIndex((p) => p.id === playerId) + 1;
+
+    statMmr.textContent = String(player.mmr);
+    statRank.textContent = `#${rankPosition}`;
+    statRecord.textContent = `${player.wins} / ${player.losses}`;
+
+    const matches = getMatchHistoryForPlayer(playerId, data.matches);
+
+    if (matches.length === 0) {
+      emptyHistory.textContent = 'No matches played yet.';
+    } else {
+      emptyHistory.hidden = true;
+      matches.forEach((match) => {
+        const won = didPlayerWin(playerId, match);
+        const delta = getMMRDelta(playerId, match);
+        const opponentIds = getOpponentIds(playerId, match);
+        const opponentNames = opponentIds.map((id) => getPlayerName(id, data.players)).join(' & ');
+        const modeLabel = match.mode === 'doubles' ? 'Doubles' : 'Singles';
+        const deltaStr = delta >= 0 ? `+${delta}` : String(delta);
+
+        const row = document.createElement('div');
+        row.className = `match-row ${won ? 'match-win' : 'match-loss'}`;
+        row.innerHTML = `
+          <div class="match-date">${formatDate(match.date)}</div>
+          <div class="match-mode">${modeLabel}</div>
+          <div class="match-opponents">vs ${opponentNames}</div>
+          <div class="match-result">${won ? 'Win' : 'Loss'}</div>
+          <div class="match-delta ${delta >= 0 ? 'delta-positive' : 'delta-negative'}">${deltaStr}</div>
+        `;
+        matchHistoryContainer.appendChild(row);
+      });
+    }
+
+    // ── Show danger zone ──────────────────────────────────
+    const dangerZone = document.getElementById('danger-zone')!;
+    dangerZone.hidden = false;
+
+    const deleteBtn = document.getElementById('delete-player-btn')!;
+    const BASE = import.meta.env.BASE_URL;
+    deleteBtn.addEventListener('click', () => {
+      const confirmed = confirm(`Are you sure you want to delete ${player.name}? This cannot be undone.`);
+      if (!confirmed) return;
+
+      const freshData = loadData();
+      freshData.players = freshData.players.filter((p) => p.id !== playerId);
+      freshData.matches = freshData.matches.filter(
+        (m) => !m.teamA.includes(playerId) && !m.teamB.includes(playerId)
+      );
+      saveData(freshData);
+      window.location.href = `${BASE}players/`;
+    });
+  }
+</script>
+
+<style is:global>
+  .hero-banner { position: relative; border-radius: 16px; overflow: hidden; margin-bottom: 1.5rem; }
+  .hero-gradient { background: linear-gradient(135deg, #0d3311 0%, #1b5e20 40%, #43a047 100%); height: 180px; }
+  .hero-content { display: flex; flex-direction: column; align-items: center; margin-top: -70px; padding-bottom: 1.5rem; position: relative; z-index: 1; }
+  .hero-photo-wrapper { margin-bottom: 0.75rem; }
+  .hero-photo { width: 140px; height: 140px; border-radius: 50%; object-fit: cover; border: 4px solid #fff; box-shadow: 0 4px 16px rgba(0,0,0,0.18); background: var(--color-bg, #f5f7f5); }
+  .hero-name { font-size: 1.75rem; font-weight: 700; color: var(--color-text, #1a1a1a); text-align: center; margin: 0; }
+  .stats-row { display: flex; justify-content: center; gap: 1.25rem; margin-bottom: 2rem; flex-wrap: wrap; }
+  .stat-card { background: var(--color-surface, #fff); border: 1px solid var(--color-border, #dde5dd); border-radius: 12px; padding: 1rem 1.75rem; text-align: center; min-width: 120px; box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
+  .stat-value { display: block; font-size: 1.5rem; font-weight: 700; color: var(--color-primary, #1b5e20); line-height: 1.2; }
+  .stat-label { display: block; font-size: 0.8rem; color: var(--color-text-light, #555); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.25rem; }
+  .match-history-section { margin-bottom: 2rem; }
+  .match-history-section h2 { font-size: 1.25rem; color: var(--color-primary, #1b5e20); margin-bottom: 1rem; }
+  .empty-state { text-align: center; color: var(--color-text-light, #555); padding: 2rem 0; font-size: 0.95rem; }
+  .match-row { display: grid; grid-template-columns: 110px 80px 1fr auto auto; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; background: var(--color-surface, #fff); border: 1px solid var(--color-border, #dde5dd); border-radius: 8px; margin-bottom: 0.5rem; font-size: 0.9rem; transition: box-shadow 0.15s; }
+  .match-row:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+  .match-win { border-left: 4px solid var(--color-primary, #1b5e20); }
+  .match-loss { border-left: 4px solid #c62828; }
+  .match-date { color: var(--color-text-light, #555); font-size: 0.85rem; }
+  .match-mode { font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-text-light, #555); }
+  .match-opponents { font-weight: 500; }
+  .match-result { font-weight: 700; font-size: 0.85rem; text-transform: uppercase; }
+  .match-win .match-result { color: var(--color-primary, #1b5e20); }
+  .match-loss .match-result { color: #c62828; }
+  .match-delta { font-weight: 700; font-size: 0.9rem; min-width: 50px; text-align: right; }
+  .delta-positive { color: var(--color-primary, #1b5e20); }
+  .delta-negative { color: #c62828; }
+  .not-found { text-align: center; padding: 3rem 1rem; }
+  .not-found h2 { font-size: 1.5rem; color: var(--color-text, #1a1a1a); margin-bottom: 0.5rem; }
+  .not-found p { color: var(--color-text-light, #555); margin-bottom: 1.5rem; }
+  .btn-back { display: inline-block; background: var(--color-primary, #1b5e20); color: #fff; text-decoration: none; padding: 0.6rem 1.25rem; border-radius: 8px; font-weight: 600; font-size: 0.9rem; transition: background 0.2s; }
+  .btn-back:hover { background: var(--color-primary-light, #2e7d32); }
+  .danger-zone { margin-top: 2rem; padding: 1.25rem; border: 1px solid #e57373; border-radius: 10px; background: #fff5f5; }
+  .danger-zone h2 { font-size: 1rem; color: #c62828; margin-bottom: 0.35rem; }
+  .danger-zone p { font-size: 0.9rem; color: var(--color-text-light, #555); margin-bottom: 1rem; }
+  .btn-delete { background: #c62828; color: #fff; border: none; padding: 0.6rem 1.25rem; border-radius: 8px; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: background 0.2s; }
+  .btn-delete:hover { background: #b71c1c; }
+  @media (max-width: 640px) {
+    .hero-gradient { height: 140px; }
+    .hero-content { margin-top: -55px; }
+    .hero-photo { width: 110px; height: 110px; }
+    .hero-name { font-size: 1.35rem; }
+    .stat-card { padding: 0.75rem 1.25rem; min-width: 100px; }
+    .stat-value { font-size: 1.25rem; }
+    .match-row { grid-template-columns: 1fr 1fr; gap: 0.35rem; }
+    .match-date { grid-column: 1 / -1; }
+    .match-opponents { grid-column: 1 / -1; }
+  }
+</style>

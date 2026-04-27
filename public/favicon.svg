@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Shuttlecock cork (base) -->
+  <circle cx="32" cy="48" r="8" fill="#1b5e20"/>
+  <!-- Feather skirt -->
+  <path d="M32 44 L20 16 Q32 22 32 22 Q32 22 44 16 Z" fill="#1b5e20" opacity="0.85"/>
+  <path d="M32 44 L14 20 Q22 28 32 26 Q42 28 50 20 Z" fill="#1b5e20" opacity="0.6"/>
+  <!-- Feather tips -->
+  <line x1="20" y1="16" x2="16" y2="8" stroke="#1b5e20" stroke-width="2" stroke-linecap="round"/>
+  <line x1="32" y1="14" x2="32" y2="6" stroke="#1b5e20" stroke-width="2" stroke-linecap="round"/>
+  <line x1="44" y1="16" x2="48" y2="8" stroke="#1b5e20" stroke-width="2" stroke-linecap="round"/>
+  <!-- Cork highlight -->
+  <circle cx="30" cy="46" r="2.5" fill="#2e7d32" opacity="0.5"/>
+</svg>

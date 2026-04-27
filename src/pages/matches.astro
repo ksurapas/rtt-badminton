@@ -1,0 +1,570 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Matches">
+  <section class="page-header">
+    <h1>🏸 Record Match</h1>
+    <p class="subtitle">Log singles or doubles match results</p>
+  </section>
+
+  <section class="match-form-section">
+    <form id="match-form" novalidate>
+      <!-- Game Mode Toggle -->
+      <div class="form-group">
+        <label class="group-label">Game Mode</label>
+        <div class="mode-toggle">
+          <button type="button" class="mode-btn active" data-mode="singles">Singles</button>
+          <button type="button" class="mode-btn" data-mode="doubles">Doubles</button>
+        </div>
+      </div>
+
+      <!-- Team A -->
+      <div class="form-group">
+        <label class="group-label">Team A</label>
+        <div id="team-a-selectors" class="team-selectors">
+          <select id="team-a-p1" aria-label="Team A Player 1" required>
+            <option value="">— Select player —</option>
+          </select>
+          <select id="team-a-p2" aria-label="Team A Player 2" class="doubles-only" hidden required>
+            <option value="">— Select player —</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Team B -->
+      <div class="form-group">
+        <label class="group-label">Team B</label>
+        <div id="team-b-selectors" class="team-selectors">
+          <select id="team-b-p1" aria-label="Team B Player 1" required>
+            <option value="">— Select player —</option>
+          </select>
+          <select id="team-b-p2" aria-label="Team B Player 2" class="doubles-only" hidden required>
+            <option value="">— Select player —</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Winner Selection -->
+      <div class="form-group">
+        <label class="group-label">Winner</label>
+        <div class="winner-radios">
+          <label class="radio-label">
+            <input type="radio" name="winner" value="teamA" required />
+            <span>Team A</span>
+          </label>
+          <label class="radio-label">
+            <input type="radio" name="winner" value="teamB" required />
+            <span>Team B</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Validation error -->
+      <div id="form-error" class="error-msg" role="alert"></div>
+
+      <button type="submit" class="btn-primary">Record Match</button>
+    </form>
+  </section>
+
+  <!-- Recent Matches -->
+  <section class="recent-matches">
+    <h2>Recent Matches</h2>
+    <div id="matches-list">
+      <p class="empty-state" id="empty-state">No matches recorded yet.</p>
+    </div>
+  </section>
+</Layout>
+
+<script>
+  import { loadData, saveData } from '../lib/storage-service';
+  import { processMatch } from '../lib/mmr-engine';
+  import { generateId, formatDate } from '../lib/utils';
+  import type { Player, MatchInput, MatchRecord, GameMode } from '../lib/types';
+
+  // ── DOM refs ──────────────────────────────────────────────
+  const form = document.getElementById('match-form') as HTMLFormElement;
+  const formError = document.getElementById('form-error')!;
+  const matchesList = document.getElementById('matches-list')!;
+  const emptyState = document.getElementById('empty-state')!;
+
+  const modeBtns = document.querySelectorAll<HTMLButtonElement>('.mode-btn');
+  const doublesSelects = document.querySelectorAll<HTMLSelectElement>('.doubles-only');
+
+  const teamAP1 = document.getElementById('team-a-p1') as HTMLSelectElement;
+  const teamAP2 = document.getElementById('team-a-p2') as HTMLSelectElement;
+  const teamBP1 = document.getElementById('team-b-p1') as HTMLSelectElement;
+  const teamBP2 = document.getElementById('team-b-p2') as HTMLSelectElement;
+
+  let currentMode: GameMode = 'singles';
+
+  // ── Helpers ───────────────────────────────────────────────
+
+  function getPlayers(): Player[] {
+    return loadData().players;
+  }
+
+  function populateSelects() {
+    const players = getPlayers();
+    const selects = [teamAP1, teamAP2, teamBP1, teamBP2];
+
+    for (const sel of selects) {
+      const currentVal = sel.value;
+      sel.innerHTML = '<option value="">— Select player —</option>';
+      for (const p of players) {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.name;
+        sel.appendChild(opt);
+      }
+      // Restore previous selection if still valid
+      if (currentVal && players.some((p) => p.id === currentVal)) {
+        sel.value = currentVal;
+      }
+    }
+  }
+
+  function setMode(mode: GameMode) {
+    currentMode = mode;
+    modeBtns.forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.mode === mode);
+    });
+    doublesSelects.forEach((sel) => {
+      sel.hidden = mode === 'singles';
+    });
+    formError.textContent = '';
+  }
+
+  function getSelectedWinner(): 'teamA' | 'teamB' | null {
+    const checked = form.querySelector<HTMLInputElement>('input[name="winner"]:checked');
+    return checked ? (checked.value as 'teamA' | 'teamB') : null;
+  }
+
+  function validate(teamA: string[], teamB: string[], winner: 'teamA' | 'teamB' | null): string | null {
+    const expectedCount = currentMode === 'singles' ? 1 : 2;
+
+    // Check correct player count
+    if (teamA.some((id) => !id) || teamA.length !== expectedCount) {
+      return `Please select ${expectedCount} player${expectedCount > 1 ? 's' : ''} for Team A.`;
+    }
+    if (teamB.some((id) => !id) || teamB.length !== expectedCount) {
+      return `Please select ${expectedCount} player${expectedCount > 1 ? 's' : ''} for Team B.`;
+    }
+
+    // No duplicates on same side
+    if (currentMode === 'doubles') {
+      if (teamA[0] === teamA[1]) return 'Team A has duplicate players.';
+      if (teamB[0] === teamB[1]) return 'Team B has duplicate players.';
+    }
+
+    // No player on both sides
+    const allIds = [...teamA, ...teamB];
+    const unique = new Set(allIds);
+    if (unique.size !== allIds.length) {
+      return 'A player cannot be on both sides.';
+    }
+
+    // Winner must be selected
+    if (!winner) {
+      return 'Please select a winner.';
+    }
+
+    return null;
+  }
+
+  function getPlayerName(id: string, players: Player[]): string {
+    return players.find((p) => p.id === id)?.name ?? 'Unknown';
+  }
+
+  // ── Render recent matches ─────────────────────────────────
+
+  function renderMatches() {
+    const data = loadData();
+    const matches = [...data.matches].sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+
+    // Clear existing match cards
+    matchesList.querySelectorAll('.match-card').forEach((el) => el.remove());
+
+    if (matches.length === 0) {
+      emptyState.hidden = false;
+      return;
+    }
+
+    emptyState.hidden = true;
+
+    for (const match of matches) {
+      const card = document.createElement('div');
+      card.className = 'match-card';
+
+      const teamANames = match.teamA.map((id) => getPlayerName(id, data.players)).join(' & ');
+      const teamBNames = match.teamB.map((id) => getPlayerName(id, data.players)).join(' & ');
+
+      const teamADelta = match.mmrChanges.find((c) => match.teamA.includes(c.playerId))?.delta ?? 0;
+      const teamBDelta = match.mmrChanges.find((c) => match.teamB.includes(c.playerId))?.delta ?? 0;
+
+      const teamAWon = match.winner === 'teamA';
+      const modeLabel = match.mode === 'singles' ? 'Singles' : 'Doubles';
+
+      card.innerHTML = `
+        <div class="match-meta">
+          <span class="match-date">${formatDate(match.date)}</span>
+          <span class="match-mode">${modeLabel}</span>
+        </div>
+        <div class="match-teams">
+          <div class="team ${teamAWon ? 'winner' : 'loser'}">
+            <span class="team-label">Team A ${teamAWon ? '🏆' : ''}</span>
+            <span class="team-players">${teamANames}</span>
+            <span class="mmr-delta ${teamADelta >= 0 ? 'positive' : 'negative'}">${teamADelta >= 0 ? '+' : ''}${Math.round(teamADelta)}</span>
+          </div>
+          <span class="vs">vs</span>
+          <div class="team ${!teamAWon ? 'winner' : 'loser'}">
+            <span class="team-label">Team B ${!teamAWon ? '🏆' : ''}</span>
+            <span class="team-players">${teamBNames}</span>
+            <span class="mmr-delta ${teamBDelta >= 0 ? 'positive' : 'negative'}">${teamBDelta >= 0 ? '+' : ''}${Math.round(teamBDelta)}</span>
+          </div>
+        </div>
+      `;
+
+      matchesList.appendChild(card);
+    }
+  }
+
+  // ── Event handlers ────────────────────────────────────────
+
+  // Mode toggle
+  modeBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      setMode(btn.dataset.mode as GameMode);
+    });
+  });
+
+  // Form submission
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    formError.textContent = '';
+
+    const teamA = currentMode === 'singles'
+      ? [teamAP1.value]
+      : [teamAP1.value, teamAP2.value];
+
+    const teamB = currentMode === 'singles'
+      ? [teamBP1.value]
+      : [teamBP1.value, teamBP2.value];
+
+    const winner = getSelectedWinner();
+
+    const error = validate(teamA, teamB, winner);
+    if (error) {
+      formError.textContent = error;
+      return;
+    }
+
+    // Build MatchInput
+    const matchInput: MatchInput = {
+      mode: currentMode,
+      teamA,
+      teamB,
+      winner: winner!,
+    };
+
+    // Build playerMMRs map
+    const data = loadData();
+    const playerMMRs: Record<string, number> = {};
+    for (const p of data.players) {
+      playerMMRs[p.id] = p.mmr;
+    }
+
+    // Process match
+    const mmrChanges = processMatch(matchInput, playerMMRs);
+
+    // Update player MMR, wins, losses
+    for (const change of mmrChanges) {
+      const player = data.players.find((p) => p.id === change.playerId);
+      if (player) {
+        player.mmr = change.newMMR;
+        const isWinner = winner === 'teamA'
+          ? matchInput.teamA.includes(player.id)
+          : matchInput.teamB.includes(player.id);
+        if (isWinner) {
+          player.wins += 1;
+        } else {
+          player.losses += 1;
+        }
+      }
+    }
+
+    // Create MatchRecord
+    const matchRecord: MatchRecord = {
+      id: generateId(),
+      date: new Date().toISOString(),
+      mode: currentMode,
+      teamA,
+      teamB,
+      winner: winner!,
+      mmrChanges,
+    };
+
+    data.matches.push(matchRecord);
+    saveData(data);
+
+    // Reset form
+    form.reset();
+    setMode('singles');
+    populateSelects();
+    renderMatches();
+  });
+
+  // ── Initial render ────────────────────────────────────────
+  populateSelects();
+  renderMatches();
+</script>
+
+<style is:global>
+  .page-header {
+    text-align: center;
+    padding: 1.5rem 0 1rem;
+  }
+
+  .page-header h1 {
+    font-size: 1.75rem;
+    color: var(--color-primary, #1b5e20);
+    margin-bottom: 0.25rem;
+  }
+
+  .subtitle {
+    color: var(--color-text-light, #555);
+    font-size: 1rem;
+  }
+
+  /* ── Form section ──────────────────────────────────────── */
+  .match-form-section {
+    max-width: 520px;
+    margin: 0 auto 2.5rem;
+    background: var(--color-surface, #fff);
+    border: 1px solid var(--color-border, #dde5dd);
+    border-radius: 12px;
+    padding: 1.5rem;
+  }
+
+  .form-group {
+    margin-bottom: 1.25rem;
+  }
+
+  .group-label {
+    display: block;
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 0.4rem;
+  }
+
+  /* ── Mode toggle ───────────────────────────────────────── */
+  .mode-toggle {
+    display: flex;
+    gap: 0;
+    border: 1px solid var(--color-border, #dde5dd);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .mode-btn {
+    flex: 1;
+    padding: 0.6rem 1rem;
+    border: none;
+    background: var(--color-bg, #f5f7f5);
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+    color: var(--color-text-light, #555);
+  }
+
+  .mode-btn.active {
+    background: var(--color-primary, #1b5e20);
+    color: #fff;
+  }
+
+  .mode-btn:not(.active):hover {
+    background: var(--color-border, #dde5dd);
+  }
+
+  /* ── Team selectors ────────────────────────────────────── */
+  .team-selectors {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .team-selectors select {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--color-border, #dde5dd);
+    border-radius: 6px;
+    font-size: 0.95rem;
+    outline: none;
+    background: #fff;
+    transition: border-color 0.2s;
+  }
+
+  .team-selectors select:focus {
+    border-color: var(--color-accent, #43a047);
+    box-shadow: 0 0 0 3px rgba(67, 160, 71, 0.15);
+  }
+
+  /* ── Winner radios ─────────────────────────────────────── */
+  .winner-radios {
+    display: flex;
+    gap: 1.5rem;
+  }
+
+  .radio-label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.95rem;
+    cursor: pointer;
+  }
+
+  .radio-label input[type='radio'] {
+    accent-color: var(--color-primary, #1b5e20);
+    width: 18px;
+    height: 18px;
+  }
+
+  /* ── Error / Button ────────────────────────────────────── */
+  .error-msg {
+    color: #c62828;
+    font-size: 0.85rem;
+    min-height: 1.2em;
+    margin-bottom: 0.75rem;
+  }
+
+  .btn-primary {
+    width: 100%;
+    background: var(--color-primary, #1b5e20);
+    color: #fff;
+    border: none;
+    padding: 0.7rem 1.5rem;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .btn-primary:hover {
+    background: var(--color-primary-light, #2e7d32);
+  }
+
+  /* ── Recent Matches ────────────────────────────────────── */
+  .recent-matches {
+    max-width: 640px;
+    margin: 0 auto;
+  }
+
+  .recent-matches h2 {
+    font-size: 1.25rem;
+    color: var(--color-primary, #1b5e20);
+    margin-bottom: 1rem;
+  }
+
+  .empty-state {
+    text-align: center;
+    color: var(--color-text-light, #555);
+    padding: 2rem 0;
+    font-size: 0.95rem;
+  }
+
+  .match-card {
+    background: var(--color-surface, #fff);
+    border: 1px solid var(--color-border, #dde5dd);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 0.75rem;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  }
+
+  .match-meta {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.6rem;
+    font-size: 0.8rem;
+    color: var(--color-text-light, #555);
+  }
+
+  .match-mode {
+    background: var(--color-bg, #f5f7f5);
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.03em;
+  }
+
+  .match-teams {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .team {
+    flex: 1;
+    text-align: center;
+  }
+
+  .team-label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--color-text-light, #555);
+    margin-bottom: 0.2rem;
+  }
+
+  .team-players {
+    display: block;
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 0.2rem;
+  }
+
+  .winner .team-players {
+    color: var(--color-primary, #1b5e20);
+  }
+
+  .loser .team-players {
+    color: var(--color-text-light, #555);
+  }
+
+  .vs {
+    font-weight: 700;
+    color: var(--color-text-light, #555);
+    font-size: 0.85rem;
+  }
+
+  .mmr-delta {
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
+
+  .mmr-delta.positive {
+    color: var(--color-primary, #1b5e20);
+  }
+
+  .mmr-delta.negative {
+    color: #c62828;
+  }
+
+  @media (max-width: 480px) {
+    .match-teams {
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .vs {
+      font-size: 0.75rem;
+    }
+  }
+</style>

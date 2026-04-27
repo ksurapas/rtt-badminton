@@ -1,0 +1,1 @@
+function i(t){return[...t].sort((r,e)=>e.mmr!==r.mmr?e.mmr-r.mmr:e.wins!==r.wins?e.wins-r.wins:r.name.localeCompare(e.name))}function m(t,r){return r.filter(e=>e.teamA.includes(t)||e.teamB.includes(t)).sort((e,n)=>new Date(n.date).getTime()-new Date(e.date).getTime())}export{m as g,i as s};
