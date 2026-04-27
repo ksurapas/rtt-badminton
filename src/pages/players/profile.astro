@@ -49,7 +49,7 @@ import Layout from '../../layouts/Layout.astro';
 </Layout>
 
 <script>
-  import { loadData, saveData } from '../../lib/storage-service';
+  import { loadData, saveData, waitForData } from '../../lib/storage-service';
   import { sortPlayersByRanking, getMatchHistoryForPlayer } from '../../lib/ranking';
   import { formatDate, DEFAULT_PLACEHOLDER_IMAGE } from '../../lib/utils';
   import type { Player, MatchRecord } from '../../lib/types';
@@ -83,6 +83,8 @@ import Layout from '../../layouts/Layout.astro';
   // ── Extract player ID from query parameter ────────────────
   const params = new URLSearchParams(window.location.search);
   const playerId = params.get('id') ?? '';
+
+  await waitForData();
 
   const heroBanner = document.getElementById('hero-banner')!;
   const heroPhoto = document.getElementById('hero-photo') as HTMLImageElement;

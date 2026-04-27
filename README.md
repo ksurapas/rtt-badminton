@@ -7,7 +7,7 @@ A website for managing your badminton club activities, built with [Astro](https:
 - **Generate matchups** — Automatically create balanced teams based on player skill levels
 - **Manage player profiles** — Each player gets a profile page with their photo, stats, and match history
 
-Everything runs in the browser — no server or database needed. Your data is saved in the browser's local storage.
+Everything runs in the browser with data shared across all devices via Firebase Realtime Database.
 
 ---
 
@@ -15,11 +15,12 @@ Everything runs in the browser — no server or database needed. Your data is sa
 
 1. [What You Need](#what-you-need)
 2. [Installing Node.js](#installing-nodejs)
-3. [Setting Up the Project](#setting-up-the-project)
-4. [Running the Site Locally](#running-the-site-locally)
-5. [Building for Production](#building-for-production)
-6. [Running Tests](#running-tests)
-7. [Deploying to GitHub Pages](#deploying-to-github-pages)
+3. [Setting Up Firebase](#setting-up-firebase)
+4. [Setting Up the Project](#setting-up-the-project)
+5. [Running the Site Locally](#running-the-site-locally)
+6. [Building for Production](#building-for-production)
+7. [Running Tests](#running-tests)
+8. [Deploying to GitHub Pages](#deploying-to-github-pages)
 
 ---
 
@@ -68,6 +69,63 @@ npm -v
 ```
 
 Each command should print a version number (for example, `v20.11.0` and `10.2.0`). If you see version numbers, Node.js is installed correctly. If you see an error like "command not found", try restarting your computer and running the commands again.
+
+---
+
+## Setting Up Firebase
+
+This project uses Firebase Realtime Database so that all devices share the same data. Follow these steps to create a free Firebase project.
+
+### Step 1: Create a Firebase project
+
+1. Go to **[https://console.firebase.google.com](https://console.firebase.google.com)** and sign in with your Google account
+2. Click **"Create a project"** (or "Add project")
+3. Enter a project name, e.g. `rtt-badminton`
+4. You can disable Google Analytics (not needed) — click **"Continue"**
+5. Click **"Create project"** and wait for it to finish, then click **"Continue"**
+
+### Step 2: Create a Realtime Database
+
+1. In the Firebase console, click **"Build"** in the left sidebar, then click **"Realtime Database"**
+2. Click **"Create Database"**
+3. Choose a location closest to you (e.g. Singapore for Southeast Asia), click **"Next"**
+4. Select **"Start in test mode"** — this allows anyone to read/write for 30 days. Click **"Enable"**
+
+**Important:** Test mode expires after 30 days. To keep it working, go to **Realtime Database → Rules** and set:
+```json
+{
+  "rules": {
+    ".read": true,
+    ".write": true
+  }
+}
+```
+Click **"Publish"**. This allows open access — fine for a private club site.
+
+### Step 3: Get your Firebase config
+
+1. In the Firebase console, click the **gear icon** (⚙️) next to "Project Overview" → **"Project settings"**
+2. Scroll down to **"Your apps"** section. If no app exists, click the **web icon** (`</>`) to add one
+3. Enter a nickname (e.g. `rtt-badminton-web`), click **"Register app"**
+4. You'll see a code block with `firebaseConfig`. Copy the values
+
+### Step 4: Update the config file
+
+Open `src/lib/firebase.ts` in a text editor and replace the placeholder values with your actual Firebase config:
+
+```typescript
+const firebaseConfig = {
+  apiKey: "AIzaSy...",              // your actual API key
+  authDomain: "rtt-badminton.firebaseapp.com",
+  databaseURL: "https://rtt-badminton-default-rtdb.firebaseio.com",
+  projectId: "rtt-badminton",
+  storageBucket: "rtt-badminton.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "1:123456789:web:abc123",
+};
+```
+
+Save the file. The values come from Step 3 above.
 
 ---
 

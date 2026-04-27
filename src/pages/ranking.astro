@@ -14,7 +14,7 @@ import Layout from '../layouts/Layout.astro';
 </Layout>
 
 <script>
-  import { loadData } from '../lib/storage-service';
+  import { loadData, waitForData } from '../lib/storage-service';
   import { sortPlayersByRanking } from '../lib/ranking';
   import { DEFAULT_PLACEHOLDER_IMAGE } from '../lib/utils';
   import type { Player } from '../lib/types';
@@ -83,6 +83,7 @@ import Layout from '../layouts/Layout.astro';
     container.appendChild(table);
   }
 
+  await waitForData();
   render();
 </script>
 

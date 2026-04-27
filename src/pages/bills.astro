@@ -115,7 +115,7 @@ import Layout from '../layouts/Layout.astro';
 
 <script>
   import { calculateCourtSplit, calculateShuttlecockSplit, calculateDinnerSplit, validateBill } from '../lib/bill-splitter';
-  import { loadData, saveBills } from '../lib/storage-service';
+  import { loadData, saveBills, waitForData } from '../lib/storage-service';
   import { generateId, formatDate } from '../lib/utils';
   import type { Player, CourtBill, ShuttlecockBill, DinnerBill, DinnerParticipant, Bill } from '../lib/types';
 
@@ -452,6 +452,7 @@ import Layout from '../layouts/Layout.astro';
   });
 
   // ── Initial render ────────────────────────────────────────
+  await waitForData();
   populatePayerSelect(courtPayer);
   populatePayerSelect(shuttlePayer);
   populatePayerSelect(dinnerPayer);

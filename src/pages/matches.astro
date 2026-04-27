@@ -77,7 +77,7 @@ import Layout from '../layouts/Layout.astro';
 </Layout>
 
 <script>
-  import { loadData, saveData } from '../lib/storage-service';
+  import { loadData, saveData, waitForData } from '../lib/storage-service';
   import { processMatch } from '../lib/mmr-engine';
   import { generateId, formatDate } from '../lib/utils';
   import type { Player, MatchInput, MatchRecord, GameMode } from '../lib/types';
@@ -317,6 +317,7 @@ import Layout from '../layouts/Layout.astro';
   });
 
   // ── Initial render ────────────────────────────────────────
+  await waitForData();
   populateSelects();
   renderMatches();
 </script>

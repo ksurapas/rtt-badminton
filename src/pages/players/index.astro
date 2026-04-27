@@ -60,7 +60,7 @@ import Layout from '../../layouts/Layout.astro';
 </Layout>
 
 <script>
-  import { loadData, savePlayers } from '../../lib/storage-service';
+  import { loadData, savePlayers, waitForData } from '../../lib/storage-service';
   import { getInitialMMR } from '../../lib/mmr-engine';
   import { generateId, DEFAULT_PLACEHOLDER_IMAGE } from '../../lib/utils';
   import type { Player } from '../../lib/types';
@@ -229,7 +229,13 @@ import Layout from '../../layouts/Layout.astro';
   });
 
   // ── Initial render ────────────────────────────────────────
+  await waitForData();
   renderGrid();
+
+  // ── Auto refresh when update DB ───────────────────────────
+  window.addEventListener('rtt-data-updated', () => {
+    renderGrid(searchInput.value);
+  });
 </script>
 
 <style is:global>

@@ -15,6 +15,10 @@ import Layout from '../layouts/Layout.astro';
     </div>
     <div class="selection-actions">
       <span id="selected-count" class="selected-count">0 selected</span>
+      <div class="courts-input">
+        <label for="num-courts">Courts:</label>
+        <input type="number" id="num-courts" min="1" max="20" value="2" />
+      </div>
       <button type="button" id="generate-btn" class="btn-primary" disabled>Generate Matchups</button>
     </div>
     <div id="validation-error" class="error-msg" role="alert"></div>
@@ -28,9 +32,11 @@ import Layout from '../layouts/Layout.astro';
 </Layout>
 
 <script>
-  import { loadData } from '../lib/storage-service';
+  import { loadData, saveData, waitForData } from '../lib/storage-service';
   import { generateMatchups } from '../lib/matchmaker';
-  import type { Player, MatchAssignment } from '../lib/types';
+  import { processMatch } from '../lib/mmr-engine';
+  import { generateId } from '../lib/utils';
+  import type { Player, MatchAssignment, MatchInput, MatchRecord } from '../lib/types';
 
   // ── DOM refs ──────────────────────────────────────────────
   const checkboxGrid = document.getElementById('player-checkboxes')!;
@@ -101,9 +107,12 @@ import Layout from '../layouts/Layout.astro';
   }
 
   // ── Generate matchups ─────────────────────────────────────
+  const numCourtsInput = document.getElementById('num-courts') as HTMLInputElement;
+
   generateBtn.addEventListener('click', () => {
     validationError.textContent = '';
     const ids = getSelectedIds();
+    const numCourts = Math.max(1, parseInt(numCourtsInput.value) || 2);
 
     if (ids.length < 2) {
       validationError.textContent = 'Please select at least 2 players.';
@@ -119,23 +128,33 @@ import Layout from '../layouts/Layout.astro';
     try {
       const result = generateMatchups(ids, playerMMRs);
 
+      // Limit matches to number of courts
+      const limitedMatches = result.matches.slice(0, numCourts);
+      const playersInMatches = new Set<string>();
+      limitedMatches.forEach((m) => {
+        m.teamA.forEach((id) => playersInMatches.add(id));
+        m.teamB.forEach((id) => playersInMatches.add(id));
+      });
+      const allSittingOut = ids.filter((id) => !playersInMatches.has(id));
+
       // Show results
       resultsSection.hidden = false;
       matchCards.innerHTML = '';
 
       // Sit-out banner
-      if (result.sittingOut.length > 0) {
-        const names = result.sittingOut.map(getPlayerName).join(', ');
+      if (allSittingOut.length > 0) {
+        const names = allSittingOut.map(getPlayerName).join(', ');
         sitOutBanner.innerHTML = `<span class="sit-out-icon">🪑</span> Sitting out: <strong>${names}</strong>`;
         sitOutBanner.hidden = false;
       } else {
         sitOutBanner.hidden = true;
       }
 
-      // Render match cards
-      result.matches.forEach((match: MatchAssignment, i: number) => {
+      // Render match cards with record buttons
+      limitedMatches.forEach((match: MatchAssignment, i: number) => {
         const card = document.createElement('div');
         card.className = 'matchup-card';
+        card.dataset.matchIndex = String(i);
 
         const modeLabel = match.type === 'singles' ? 'Singles' : 'Doubles';
         const teamANames = match.teamA.map(getPlayerName).join(' & ');
@@ -165,19 +184,92 @@ import Layout from '../layouts/Layout.astro';
           <div class="matchup-footer">
             <span class="mmr-diff">MMR Difference: <strong>${mmrDiff}</strong></span>
           </div>
+          <div class="record-section" id="record-${i}">
+            <p class="record-label">Who won?</p>
+            <div class="record-buttons">
+              <button type="button" class="btn-win btn-win-a" data-idx="${i}" data-winner="teamA">🏆 Team A</button>
+              <button type="button" class="btn-win btn-win-b" data-idx="${i}" data-winner="teamB">🏆 Team B</button>
+            </div>
+          </div>
         `;
 
         matchCards.appendChild(card);
       });
 
-      // Scroll to results
+      // Attach record handlers
+      matchCards.querySelectorAll<HTMLButtonElement>('.btn-win').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx!);
+          const winner = btn.dataset.winner as 'teamA' | 'teamB';
+          const match = limitedMatches[idx];
+          recordMatchResult(match, winner, idx);
+        });
+      });
+
       resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (err: any) {
       validationError.textContent = err.message || 'An error occurred during matchmaking.';
     }
   });
 
+  // ── Record match result ───────────────────────────────────
+  function recordMatchResult(match: MatchAssignment, winner: 'teamA' | 'teamB', idx: number) {
+    const data = loadData();
+    const playerMMRs: Record<string, number> = {};
+    for (const p of data.players) {
+      playerMMRs[p.id] = p.mmr;
+    }
+
+    const matchInput: MatchInput = {
+      mode: match.type,
+      teamA: match.teamA,
+      teamB: match.teamB,
+      winner,
+    };
+
+    const mmrChanges = processMatch(matchInput, playerMMRs);
+
+    // Update players
+    for (const change of mmrChanges) {
+      const player = data.players.find((p) => p.id === change.playerId);
+      if (player) {
+        player.mmr = change.newMMR;
+        const isWinner = winner === 'teamA'
+          ? matchInput.teamA.includes(player.id)
+          : matchInput.teamB.includes(player.id);
+        if (isWinner) player.wins += 1;
+        else player.losses += 1;
+      }
+    }
+
+    // Create match record
+    const matchRecord: MatchRecord = {
+      id: generateId(),
+      date: new Date().toISOString(),
+      mode: match.type,
+      teamA: match.teamA,
+      teamB: match.teamB,
+      winner,
+      mmrChanges,
+    };
+
+    data.matches.push(matchRecord);
+    saveData(data);
+
+    // Update UI — replace buttons with result
+    const recordSection = document.getElementById(`record-${idx}`)!;
+    const winnerLabel = winner === 'teamA' ? 'Team A' : 'Team B';
+    const delta = mmrChanges[0]?.delta ?? 0;
+    const deltaStr = delta >= 0 ? `+${Math.round(delta)}` : String(Math.round(delta));
+    recordSection.innerHTML = `<p class="recorded-result">✅ Recorded — <strong>${winnerLabel} wins</strong> (${deltaStr} MMR)</p>`;
+    recordSection.classList.add('recorded');
+
+    // Refresh player data for subsequent recordings
+    players = loadData().players;
+  }
+
   // ── Init ──────────────────────────────────────────────────
+  await waitForData();
   init();
 </script>
 
@@ -466,6 +558,86 @@ import Layout from '../layouts/Layout.astro';
 
   .mmr-diff strong {
     color: var(--color-text, #1a1a1a);
+  }
+
+  /* ── Courts input ──────────────────────────────────────── */
+  .courts-input {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-text-light, #555);
+  }
+
+  .courts-input input {
+    width: 52px;
+    padding: 0.4rem 0.5rem;
+    border: 1px solid var(--color-border, #dde5dd);
+    border-radius: 6px;
+    font-size: 0.9rem;
+    text-align: center;
+    outline: none;
+  }
+
+  .courts-input input:focus {
+    border-color: var(--color-accent, #43a047);
+    box-shadow: 0 0 0 3px rgba(67, 160, 71, 0.15);
+  }
+
+  /* ── Record section ────────────────────────────────────── */
+  .record-section {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--color-border, #dde5dd);
+    text-align: center;
+  }
+
+  .record-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-text-light, #555);
+    margin-bottom: 0.5rem;
+  }
+
+  .record-buttons {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: center;
+  }
+
+  .btn-win {
+    padding: 0.5rem 1.25rem;
+    border: 2px solid var(--color-border, #dde5dd);
+    border-radius: 8px;
+    background: var(--color-surface, #fff);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn-win:hover {
+    border-color: var(--color-primary, #1b5e20);
+    background: rgba(27, 94, 32, 0.06);
+  }
+
+  .btn-win-a:hover { color: var(--color-primary, #1b5e20); }
+  .btn-win-b:hover { color: var(--color-primary, #1b5e20); }
+
+  .recorded-result {
+    font-size: 0.9rem;
+    color: var(--color-primary, #1b5e20);
+    font-weight: 600;
+    margin: 0;
+  }
+
+  .record-section.recorded {
+    background: rgba(27, 94, 32, 0.04);
+    border-radius: 0 0 8px 8px;
+    padding: 0.6rem;
+    margin: 0.75rem -1.25rem -1rem;
+    border-top: 1px solid var(--color-border, #dde5dd);
   }
 
   /* ── Responsive ────────────────────────────────────────── */
