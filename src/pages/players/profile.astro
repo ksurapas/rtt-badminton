@@ -8,8 +8,23 @@ import Layout from '../../layouts/Layout.astro';
     <div class="hero-content">
       <div class="hero-photo-wrapper">
         <img id="hero-photo" src="" alt="Player profile photo" class="hero-photo" />
+        <button type="button" id="edit-photo-btn" class="edit-photo-btn" title="Change profile picture" hidden>
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+        </button>
+        <input type="file" id="edit-photo-input" accept="image/jpeg,image/png,image/webp" style="display:none" />
       </div>
       <h1 class="hero-name" id="hero-name"></h1>
+      <div id="photo-edit-panel" class="photo-edit-panel" hidden>
+        <img id="photo-edit-preview" class="photo-edit-preview" alt="New profile picture preview" />
+        <div class="photo-edit-actions">
+          <button type="button" id="save-photo-btn" class="btn-save-photo">Save Photo</button>
+          <button type="button" id="cancel-photo-btn" class="btn-cancel-photo">Cancel</button>
+        </div>
+        <span id="photo-edit-error" class="photo-edit-error"></span>
+      </div>
     </div>
   </section>
 
@@ -49,7 +64,7 @@ import Layout from '../../layouts/Layout.astro';
 </Layout>
 
 <script>
-  import { loadData, saveData, waitForData } from '../../lib/storage-service';
+  import { loadData, saveData, savePlayers, waitForData } from '../../lib/storage-service';
   import { sortPlayersByRanking, getMatchHistoryForPlayer } from '../../lib/ranking';
   import { formatDate, DEFAULT_PLACEHOLDER_IMAGE } from '../../lib/utils';
   import type { Player, MatchRecord } from '../../lib/types';
@@ -145,6 +160,76 @@ import Layout from '../../layouts/Layout.astro';
       });
     }
 
+    // ── Edit profile picture ──────────────────────────────
+    const editPhotoBtn = document.getElementById('edit-photo-btn')!;
+    const editPhotoInput = document.getElementById('edit-photo-input') as HTMLInputElement;
+    const photoEditPanel = document.getElementById('photo-edit-panel')!;
+    const photoEditPreview = document.getElementById('photo-edit-preview') as HTMLImageElement;
+    const savePhotoBtn = document.getElementById('save-photo-btn')!;
+    const cancelPhotoBtn = document.getElementById('cancel-photo-btn')!;
+    const photoEditError = document.getElementById('photo-edit-error')!;
+
+    const MAX_FILE_SIZE = 5 * 1024 * 1024;
+    const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+    let pendingPhotoDataUrl: string | null = null;
+
+    function readFileAsDataUrl(file: File): Promise<string> {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    editPhotoBtn.hidden = false;
+    editPhotoBtn.addEventListener('click', () => editPhotoInput.click());
+
+    editPhotoInput.addEventListener('change', async () => {
+      photoEditError.textContent = '';
+      const file = editPhotoInput.files?.[0];
+      if (!file) return;
+
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        photoEditError.textContent = 'Invalid format. Please use JPEG, PNG, or WebP.';
+        editPhotoInput.value = '';
+        return;
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        photoEditError.textContent = 'File too large. Maximum size is 5 MB.';
+        editPhotoInput.value = '';
+        return;
+      }
+
+      try {
+        pendingPhotoDataUrl = await readFileAsDataUrl(file);
+        photoEditPreview.src = pendingPhotoDataUrl;
+        photoEditPanel.hidden = false;
+      } catch {
+        photoEditError.textContent = 'Could not read the image file.';
+      }
+    });
+
+    savePhotoBtn.addEventListener('click', () => {
+      if (!pendingPhotoDataUrl) return;
+      const freshData = loadData();
+      const targetPlayer = freshData.players.find((p) => p.id === playerId);
+      if (!targetPlayer) return;
+      targetPlayer.profilePicture = pendingPhotoDataUrl;
+      savePlayers(freshData.players);
+      heroPhoto.src = pendingPhotoDataUrl;
+      photoEditPanel.hidden = true;
+      pendingPhotoDataUrl = null;
+      editPhotoInput.value = '';
+    });
+
+    cancelPhotoBtn.addEventListener('click', () => {
+      photoEditPanel.hidden = true;
+      pendingPhotoDataUrl = null;
+      editPhotoInput.value = '';
+      photoEditError.textContent = '';
+    });
+
     // ── Show danger zone ──────────────────────────────────
     const dangerZone = document.getElementById('danger-zone')!;
     dangerZone.hidden = false;
@@ -170,8 +255,18 @@ import Layout from '../../layouts/Layout.astro';
   .hero-banner { position: relative; border-radius: 16px; overflow: hidden; margin-bottom: 1.5rem; }
   .hero-gradient { background: linear-gradient(135deg, #0d3311 0%, #1b5e20 40%, #43a047 100%); height: 180px; }
   .hero-content { display: flex; flex-direction: column; align-items: center; margin-top: -70px; padding-bottom: 1.5rem; position: relative; z-index: 1; }
-  .hero-photo-wrapper { margin-bottom: 0.75rem; }
-  .hero-photo { width: 140px; height: 140px; border-radius: 50%; object-fit: cover; border: 4px solid #fff; box-shadow: 0 4px 16px rgba(0,0,0,0.18); background: var(--color-bg, #f5f7f5); }
+  .hero-photo-wrapper { margin-bottom: 0.75rem; position: relative; display: inline-block; }
+  .hero-photo { width: 140px; height: 140px; border-radius: 50%; object-fit: cover; border: 4px solid #fff; box-shadow: 0 4px 16px rgba(0,0,0,0.18); background: var(--color-bg, #f5f7f5); display: block; }
+  .edit-photo-btn { position: absolute; bottom: 4px; right: 4px; width: 32px; height: 32px; border-radius: 50%; background: #1b5e20; color: #fff; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.25); transition: background 0.2s, transform 0.15s; padding: 0; }
+  .edit-photo-btn:hover { background: #2e7d32; transform: scale(1.1); }
+  .photo-edit-panel { display: flex; flex-direction: column; align-items: center; gap: 0.75rem; margin-top: 0.75rem; background: rgba(255,255,255,0.95); border-radius: 12px; padding: 0.75rem 1rem; box-shadow: 0 2px 12px rgba(0,0,0,0.12); }
+  .photo-edit-preview { width: 90px; height: 90px; border-radius: 50%; object-fit: cover; border: 3px solid #1b5e20; }
+  .photo-edit-actions { display: flex; gap: 0.5rem; }
+  .btn-save-photo { background: #1b5e20; color: #fff; border: none; padding: 0.45rem 1rem; border-radius: 7px; font-weight: 600; font-size: 0.88rem; cursor: pointer; transition: background 0.2s; }
+  .btn-save-photo:hover { background: #2e7d32; }
+  .btn-cancel-photo { background: transparent; color: var(--color-text-light, #555); border: 1px solid var(--color-border, #dde5dd); padding: 0.45rem 1rem; border-radius: 7px; font-weight: 600; font-size: 0.88rem; cursor: pointer; transition: background 0.2s; }
+  .btn-cancel-photo:hover { background: var(--color-border, #dde5dd); }
+  .photo-edit-error { color: #c62828; font-size: 0.82rem; min-height: 1em; }
   .hero-name { font-size: 1.75rem; font-weight: 700; color: var(--color-text, #1a1a1a); text-align: center; margin: 0; }
   .stats-row { display: flex; justify-content: center; gap: 1.25rem; margin-bottom: 2rem; flex-wrap: wrap; }
   .stat-card { background: var(--color-surface, #fff); border: 1px solid var(--color-border, #dde5dd); border-radius: 12px; padding: 1rem 1.75rem; text-align: center; min-width: 120px; box-shadow: 0 2px 6px rgba(0,0,0,0.06); }

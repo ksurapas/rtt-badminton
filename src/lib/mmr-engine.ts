@@ -1,7 +1,7 @@
 import type { MatchInput, MMRChange } from './types';
 
 // ── Constants ───────────────────────────────────────────────
-const K_FACTOR = 32;
+const K_FACTOR = 25;
 const INITIAL_MMR = 1000;
 
 // ── Public API ──────────────────────────────────────────────
