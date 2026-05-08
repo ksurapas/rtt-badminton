@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background -->
+  <rect width="512" height="512" fill="#1b5e20"/>
+
+  <!-- Feather strands -->
+  <g stroke="white" stroke-width="13" stroke-linecap="round">
+    <line x1="256" y1="318" x2="170" y2="158"/>
+    <line x1="256" y1="318" x2="213" y2="144"/>
+    <line x1="256" y1="318" x2="256" y2="138"/>
+    <line x1="256" y1="318" x2="299" y2="144"/>
+    <line x1="256" y1="318" x2="342" y2="158"/>
+  </g>
+
+  <!-- Feather arc (hoop) -->
+  <path d="M 170 158 Q 256 88 342 158"
+        fill="rgba(255,255,255,0.12)"
+        stroke="white"
+        stroke-width="13"
+        stroke-linecap="round"/>
+
+  <!-- Shaft -->
+  <rect x="249" y="315" width="14" height="52" rx="7" fill="white"/>
+
+  <!-- Cork base -->
+  <circle cx="256" cy="384" r="56" fill="white"/>
+
+  <!-- Cork inner ring detail -->
+  <circle cx="256" cy="384" r="34" fill="none" stroke="#1b5e20" stroke-width="5" opacity="0.18"/>
+</svg>

@@ -1,0 +1,17 @@
+{
+  "name": "RTT Badminton Club",
+  "short_name": "RTT Badminton",
+  "description": "Track matches, rankings, and bills for RTT Badminton Club",
+  "start_url": "/rtt-badminton/",
+  "display": "standalone",
+  "background_color": "#1b5e20",
+  "theme_color": "#1b5e20",
+  "icons": [
+    {
+      "src": "/rtt-badminton/logo.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
