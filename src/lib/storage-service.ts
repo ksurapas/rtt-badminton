@@ -5,7 +5,7 @@ import type { AppData, Player, MatchRecord, Bill } from './types';
 const DB_PATH = 'rtt-badminton-data';
 
 function emptyAppData(): AppData {
-  return { players: [], matches: [], bills: [] };
+  return { players: [], matches: [], bills: [], seasons: [] };
 }
 
 // ── In-memory cache (synced with Firebase in real-time) ─────
@@ -24,6 +24,7 @@ if (typeof window !== 'undefined') {
         players: Array.isArray(val.players) ? val.players : [],
         matches: Array.isArray(val.matches) ? val.matches : [],
         bills: Array.isArray(val.bills) ? val.bills : [],
+        seasons: Array.isArray(val.seasons) ? val.seasons : [],
       };
     } else {
       cachedData = emptyAppData();
@@ -65,10 +66,10 @@ export function loadData(): AppData {
 }
 
 /** Persist a full AppData object to Firebase. */
-export function saveData(data: AppData): void {
+export function saveData(data: AppData): Promise<void> {
   cachedData = data;
   const dbRef = ref(db, DB_PATH);
-  set(dbRef, data).catch((err) => {
+  return set(dbRef, data).catch((err) => {
     console.error('RTT Badminton: Failed to save data to Firebase:', err);
   });
 }

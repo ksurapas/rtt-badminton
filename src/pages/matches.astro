@@ -23,12 +23,18 @@ import Layout from '../layouts/Layout.astro';
       <div class="form-group">
         <label class="group-label">Team A</label>
         <div id="team-a-selectors" class="team-selectors">
-          <select id="team-a-p1" aria-label="Team A Player 1" required>
-            <option value="">— Select player —</option>
-          </select>
-          <select id="team-a-p2" aria-label="Team A Player 2" class="doubles-only" hidden required>
-            <option value="">— Select player —</option>
-          </select>
+          <div class="select-with-mmr">
+            <select id="team-a-p1" aria-label="Team A Player 1" required>
+              <option value="">— Select player —</option>
+            </select>
+            <span id="team-a-p1-mmr" class="select-mmr" hidden></span>
+          </div>
+          <div class="select-with-mmr doubles-only" hidden>
+            <select id="team-a-p2" aria-label="Team A Player 2" required>
+              <option value="">— Select player —</option>
+            </select>
+            <span id="team-a-p2-mmr" class="select-mmr" hidden></span>
+          </div>
         </div>
       </div>
 
@@ -36,12 +42,18 @@ import Layout from '../layouts/Layout.astro';
       <div class="form-group">
         <label class="group-label">Team B</label>
         <div id="team-b-selectors" class="team-selectors">
-          <select id="team-b-p1" aria-label="Team B Player 1" required>
-            <option value="">— Select player —</option>
-          </select>
-          <select id="team-b-p2" aria-label="Team B Player 2" class="doubles-only" hidden required>
-            <option value="">— Select player —</option>
-          </select>
+          <div class="select-with-mmr">
+            <select id="team-b-p1" aria-label="Team B Player 1" required>
+              <option value="">— Select player —</option>
+            </select>
+            <span id="team-b-p1-mmr" class="select-mmr" hidden></span>
+          </div>
+          <div class="select-with-mmr doubles-only" hidden>
+            <select id="team-b-p2" aria-label="Team B Player 2" required>
+              <option value="">— Select player —</option>
+            </select>
+            <span id="team-b-p2-mmr" class="select-mmr" hidden></span>
+          </div>
         </div>
       </div>
 
@@ -89,12 +101,31 @@ import Layout from '../layouts/Layout.astro';
   const emptyState = document.getElementById('empty-state')!;
 
   const modeBtns = document.querySelectorAll<HTMLButtonElement>('.mode-btn');
-  const doublesSelects = document.querySelectorAll<HTMLSelectElement>('.doubles-only');
+  const doublesWrappers = document.querySelectorAll<HTMLElement>('.doubles-only');
 
   const teamAP1 = document.getElementById('team-a-p1') as HTMLSelectElement;
   const teamAP2 = document.getElementById('team-a-p2') as HTMLSelectElement;
   const teamBP1 = document.getElementById('team-b-p1') as HTMLSelectElement;
   const teamBP2 = document.getElementById('team-b-p2') as HTMLSelectElement;
+
+  const mmrDisplays: Record<string, HTMLElement> = {
+    'team-a-p1': document.getElementById('team-a-p1-mmr')!,
+    'team-a-p2': document.getElementById('team-a-p2-mmr')!,
+    'team-b-p1': document.getElementById('team-b-p1-mmr')!,
+    'team-b-p2': document.getElementById('team-b-p2-mmr')!,
+  };
+
+  function updateMMRDisplay(sel: HTMLSelectElement) {
+    const display = mmrDisplays[sel.id];
+    if (!display) return;
+    const player = loadData().players.find((p) => p.id === sel.value);
+    if (player) {
+      display.textContent = `${player.mmr} MMR`;
+      display.hidden = false;
+    } else {
+      display.hidden = true;
+    }
+  }
 
   let currentMode: GameMode = 'singles';
 
@@ -129,8 +160,8 @@ import Layout from '../layouts/Layout.astro';
     modeBtns.forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.mode === mode);
     });
-    doublesSelects.forEach((sel) => {
-      sel.hidden = mode === 'singles';
+    doublesWrappers.forEach((el) => {
+      el.hidden = mode === 'singles';
     });
     formError.textContent = '';
   }
@@ -233,6 +264,11 @@ import Layout from '../layouts/Layout.astro';
 
   // ── Event handlers ────────────────────────────────────────
 
+  // MMR display on player select
+  [teamAP1, teamAP2, teamBP1, teamBP2].forEach((sel) => {
+    sel.addEventListener('change', () => updateMMRDisplay(sel));
+  });
+
   // Mode toggle
   modeBtns.forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -312,6 +348,7 @@ import Layout from '../layouts/Layout.astro';
     // Reset form
     form.reset();
     setMode('singles');
+    Object.values(mmrDisplays).forEach((el) => { el.hidden = true; });
     populateSelects();
     renderMatches();
   });
@@ -397,6 +434,12 @@ import Layout from '../layouts/Layout.astro';
     gap: 0.5rem;
   }
 
+  .select-with-mmr:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
   .team-selectors select {
     width: 100%;
     padding: 0.6rem 0.75rem;
@@ -411,6 +454,13 @@ import Layout from '../layouts/Layout.astro';
   .team-selectors select:focus {
     border-color: var(--color-accent, #43a047);
     box-shadow: 0 0 0 3px rgba(67, 160, 71, 0.15);
+  }
+
+  .select-mmr {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-primary, #1b5e20);
+    padding-left: 0.25rem;
   }
 
   /* ── Winner radios ─────────────────────────────────────── */

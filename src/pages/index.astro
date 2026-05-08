@@ -17,6 +17,17 @@ const sections = [
     <p class="subtitle">Track matches, rankings, and bills — all in one place.</p>
   </section>
 
+  <section id="potw-banner" class="potw-banner" hidden>
+    <div class="potw-badge" id="potw-badge">⭐ Player of the Week</div>
+    <div class="potw-body">
+      <img id="potw-photo" class="potw-photo" alt="" />
+      <div class="potw-info">
+        <span id="potw-name" class="potw-name"></span>
+        <span id="potw-stat" class="potw-stat"></span>
+      </div>
+    </div>
+  </section>
+
   <nav class="quick-links" aria-label="Quick links">
     {sections.map((s) => (
       <a href={s.href} class="card">
@@ -27,6 +38,103 @@ const sections = [
     ))}
   </nav>
 </Layout>
+
+<script>
+  import { loadData, waitForData } from '../lib/storage-service';
+  import { sortPlayersByRanking } from '../lib/ranking';
+  import { DEFAULT_PLACEHOLDER_IMAGE } from '../lib/utils';
+
+  function formatBWFName(fullName: string): string {
+    const parts = fullName.trim().split(/\s+/);
+    if (parts.length <= 1) return fullName.toUpperCase();
+    const lastName = parts[parts.length - 1].toUpperCase();
+    const firstNames = parts.slice(0, -1).join(' ');
+    return `${firstNames} ${lastName}`;
+  }
+
+  function getWeekStart(): Date {
+    const now = new Date();
+    const day = now.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + diff);
+    monday.setHours(0, 0, 0, 0);
+    return monday;
+  }
+
+  await waitForData();
+  const data = loadData();
+
+  const banner = document.getElementById('potw-banner')!;
+  const badge = document.getElementById('potw-badge')!;
+  const photo = document.getElementById('potw-photo') as HTMLImageElement;
+  const nameEl = document.getElementById('potw-name')!;
+  const statEl = document.getElementById('potw-stat')!;
+
+  function showBanner(badgeText: string, imgSrc: string, displayName: string, statText: string) {
+    badge.textContent = badgeText;
+    photo.src = imgSrc;
+    nameEl.textContent = formatBWFName(displayName);
+    statEl.textContent = statText;
+    banner.hidden = false;
+  }
+
+  // Find the most recently ended season
+  const lastSeason = data.seasons.length > 0
+    ? [...data.seasons].sort((a, b) => new Date(b.endedAt).getTime() - new Date(a.endedAt).getTime())[0]
+    : null;
+
+  // Matches played since the last reset (empty = no new games yet this season)
+  const matchesSinceReset = lastSeason
+    ? data.matches.filter((m) => new Date(m.date) > new Date(lastSeason.endedAt))
+    : data.matches;
+
+  if (lastSeason && matchesSinceReset.length === 0 && lastSeason.leaderboard.length > 0) {
+    // No games played yet this season → show the season champion
+    const champion = lastSeason.leaderboard[0];
+    const championPlayer = data.players.find((p) => p.id === champion.playerId);
+    showBanner(
+      `🏆 ${lastSeason.name} Champion`,
+      championPlayer?.profilePicture ?? DEFAULT_PLACEHOLDER_IMAGE,
+      champion.name,
+      `${champion.mmr} MMR · ${champion.wins}W ${champion.losses}L`,
+    );
+  } else {
+    // Normal POTW logic
+    const weekStart = getWeekStart();
+    const weekMatches = data.matches.filter((m) => new Date(m.date) >= weekStart);
+
+    let mvpId: string | null = null;
+    let mvpStat = '';
+
+    if (weekMatches.length > 0) {
+      const mmrGained: Record<string, number> = {};
+      for (const match of weekMatches) {
+        for (const change of match.mmrChanges) {
+          mmrGained[change.playerId] = (mmrGained[change.playerId] ?? 0) + change.delta;
+        }
+      }
+      const topId = Object.entries(mmrGained).sort((a, b) => b[1] - a[1])[0];
+      if (topId && topId[1] > 0) {
+        mvpId = topId[0];
+        mvpStat = `+${Math.round(topId[1])} MMR this week`;
+      }
+    }
+
+    if (!mvpId && data.players.length > 0) {
+      const ranked = sortPlayersByRanking(data.players);
+      mvpId = ranked[0].id;
+      mvpStat = `${ranked[0].mmr} MMR · #1 Ranked`;
+    }
+
+    if (mvpId) {
+      const player = data.players.find((p) => p.id === mvpId);
+      if (player) {
+        showBanner('⭐ Player of the Week', player.profilePicture ?? DEFAULT_PLACEHOLDER_IMAGE, player.name, mvpStat);
+      }
+    }
+  }
+</script>
 
 <style>
   .hero {
@@ -43,6 +151,68 @@ const sections = [
   .subtitle {
     color: var(--color-text-light, #555);
     font-size: 1.1rem;
+  }
+
+  .potw-banner {
+    background: linear-gradient(135deg, #7b5e00, #c8960c 45%, #f0c040 100%);
+    border-radius: 16px;
+    padding: 1.25rem 1.75rem;
+    margin-bottom: 2rem;
+    color: #fff;
+    box-shadow: 0 4px 18px rgba(180, 130, 0, 0.35);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.85rem;
+  }
+
+  .potw-banner:not([hidden]) {
+    display: flex;
+  }
+
+  .potw-badge {
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 0.3rem 0.9rem;
+    border-radius: 20px;
+  }
+
+  .potw-body {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+  }
+
+  .potw-photo {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid rgba(255, 255, 255, 0.85);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+    flex-shrink: 0;
+  }
+
+  .potw-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .potw-name {
+    font-size: 1.4rem;
+    font-weight: 800;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+    line-height: 1.2;
+  }
+
+  .potw-stat {
+    font-size: 0.88rem;
+    opacity: 0.9;
+    font-weight: 600;
   }
 
   .quick-links {

@@ -105,9 +105,27 @@ export interface MatchmakingResult {
   sittingOut: string[];
 }
 
+// ── Season Snapshots ─────────────────────────────────────────
+export interface SeasonEntry {
+  rank: number;
+  playerId: string;
+  name: string;
+  mmr: number;
+  wins: number;
+  losses: number;
+}
+
+export interface Season {
+  id: string;
+  name: string;
+  endedAt: string;
+  leaderboard: SeasonEntry[];
+}
+
 // ── App Data (localStorage) ─────────────────────────────────
 export interface AppData {
   players: Player[];
   matches: MatchRecord[];
   bills: Bill[];
+  seasons: Season[];
 }

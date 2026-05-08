@@ -11,19 +11,48 @@ import Layout from '../layouts/Layout.astro';
   <div id="ranking-container">
     <p class="empty-state" id="empty-state">No players registered yet.</p>
   </div>
+
+  <section class="season-reset-zone">
+    <div class="season-reset-info">
+      <span class="season-label" id="current-season-label">Season 1 · In Progress</span>
+      <p>Reset all MMR to 1000 and W/L to 0. The current leaderboard will be saved as a season snapshot.</p>
+    </div>
+    <button type="button" id="reset-season-btn" class="btn-reset-season">End Season &amp; Reset</button>
+  </section>
+
+  <section id="past-seasons-section" hidden>
+    <h2 class="past-seasons-heading">Past Seasons</h2>
+    <div id="past-seasons-list"></div>
+  </section>
 </Layout>
 
 <script>
-  import { loadData, waitForData } from '../lib/storage-service';
-  import { sortPlayersByRanking } from '../lib/ranking';
-  import { DEFAULT_PLACEHOLDER_IMAGE } from '../lib/utils';
-  import type { Player } from '../lib/types';
+  import { loadData, saveData, waitForData } from '../lib/storage-service';
+  import { sortPlayersByRanking, getMatchHistoryForPlayer } from '../lib/ranking';
+  import { DEFAULT_PLACEHOLDER_IMAGE, generateId, formatDate } from '../lib/utils';
+  import type { Player, MatchRecord, Season } from '../lib/types';
 
   const container = document.getElementById('ranking-container')!;
   const emptyState = document.getElementById('empty-state')!;
 
+  function getStreak(playerId: string, matches: MatchRecord[]): { type: 'win' | 'loss'; count: number } | null {
+    const history = getMatchHistoryForPlayer(playerId, matches);
+    if (history.length === 0) return null;
+    const m0 = history[0];
+    const firstWon = m0.winner === 'teamA' ? m0.teamA.includes(playerId) : m0.teamB.includes(playerId);
+    let count = 1;
+    for (let i = 1; i < history.length; i++) {
+      const m = history[i];
+      const won = m.winner === 'teamA' ? m.teamA.includes(playerId) : m.teamB.includes(playerId);
+      if (won !== firstWon) break;
+      count++;
+    }
+    return { type: firstWon ? 'win' : 'loss', count };
+  }
+
   function render() {
-    const { players } = loadData();
+    container.querySelector('.ranking-table')?.remove();
+    const { players, matches } = loadData();
     const sorted = sortPlayersByRanking(players);
 
     if (sorted.length === 0) {
@@ -61,20 +90,38 @@ import Layout from '../layouts/Layout.astro';
 
       const imgSrc = player.profilePicture ?? DEFAULT_PLACEHOLDER_IMAGE;
 
+      const streak = getStreak(player.id, matches);
+      let streakBadge = '';
+      if (streak && streak.count >= 2) {
+        const cls = streak.type === 'win' ? 'streak-win' : 'streak-loss';
+        const icon = streak.type === 'win' ? '🔥' : '❄️';
+        const letter = streak.type === 'win' ? 'W' : 'L';
+        streakBadge = `<span class="streak-badge ${cls}">${icon} ${letter}${streak.count}</span>`;
+      }
+
+      const playerCell = document.createElement('td');
+      playerCell.className = 'col-player';
+      const playerInfo = document.createElement('div');
+      playerInfo.className = 'player-info';
+      const thumb = document.createElement('img');
+      thumb.src = imgSrc;
+      thumb.alt = player.name;
+      thumb.className = 'player-thumb';
+      thumb.loading = 'lazy';
+      const nameCell = document.createElement('div');
+      nameCell.className = 'player-name-cell';
+      nameCell.innerHTML = `<span class="player-name">${player.name}</span>${streakBadge}`;
+      playerInfo.appendChild(thumb);
+      playerInfo.appendChild(nameCell);
+      playerCell.appendChild(playerInfo);
+
       row.innerHTML = `
-        <td class="col-rank">
-          <span class="rank-number">${rank}</span>
-        </td>
-        <td class="col-player">
-          <div class="player-info">
-            <img src="${imgSrc}" alt="${player.name}" class="player-thumb" loading="lazy" />
-            <span class="player-name">${player.name}</span>
-          </div>
-        </td>
+        <td class="col-rank"><span class="rank-number">${rank}</span></td>
         <td class="col-mmr"><span class="mmr-value">${player.mmr}</span></td>
         <td class="col-wins">${player.wins}</td>
         <td class="col-losses">${player.losses}</td>
       `;
+      row.insertBefore(playerCell, row.children[1]);
 
       tbody.appendChild(row);
     });
@@ -83,8 +130,106 @@ import Layout from '../layouts/Layout.astro';
     container.appendChild(table);
   }
 
+  const currentSeasonLabel = document.getElementById('current-season-label')!;
+  const resetBtn = document.getElementById('reset-season-btn')!;
+  const pastSeasonsSection = document.getElementById('past-seasons-section')!;
+  const pastSeasonsList = document.getElementById('past-seasons-list')!;
+
+  function renderSeasons() {
+    const { seasons } = loadData();
+
+    currentSeasonLabel.textContent = `Season ${seasons.length + 1} · In Progress`;
+
+    pastSeasonsList.innerHTML = '';
+    if (seasons.length === 0) {
+      pastSeasonsSection.hidden = true;
+      return;
+    }
+
+    pastSeasonsSection.hidden = false;
+    const sorted = [...seasons].sort(
+      (a, b) => new Date(b.endedAt).getTime() - new Date(a.endedAt).getTime()
+    );
+
+    sorted.forEach((season) => {
+      const card = document.createElement('div');
+      card.className = 'season-card';
+
+      const header = document.createElement('button');
+      header.type = 'button';
+      header.className = 'season-card-header';
+      header.innerHTML = `
+        <span class="season-card-name">${season.name}</span>
+        <span class="season-card-date">${formatDate(season.endedAt)}</span>
+        <span class="season-chevron">▾</span>
+      `;
+
+      const body = document.createElement('div');
+      body.className = 'season-card-body';
+      body.hidden = true;
+
+      season.leaderboard.forEach((entry) => {
+        const row = document.createElement('div');
+        row.className = 'season-entry';
+        const medal = entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : entry.rank === 3 ? '🥉' : `#${entry.rank}`;
+        row.innerHTML = `
+          <span class="season-entry-rank">${medal}</span>
+          <span class="season-entry-name">${entry.name}</span>
+          <span class="season-entry-mmr">${entry.mmr} MMR</span>
+          <span class="season-entry-record">${entry.wins}W / ${entry.losses}L</span>
+        `;
+        body.appendChild(row);
+      });
+
+      header.addEventListener('click', () => {
+        body.hidden = !body.hidden;
+        header.querySelector('.season-chevron')!.textContent = body.hidden ? '▾' : '▴';
+      });
+
+      card.appendChild(header);
+      card.appendChild(body);
+      pastSeasonsList.appendChild(card);
+    });
+  }
+
+  resetBtn.addEventListener('click', async () => {
+    const data = loadData();
+    const nextSeasonNumber = data.seasons.length + 1;
+    const sorted = sortPlayersByRanking(data.players);
+
+    const confirmed = confirm(
+      `End Season ${nextSeasonNumber} and reset all MMR to 1000?\n\nThis will:\n• Save the current leaderboard as "Season ${nextSeasonNumber}"\n• Reset every player's MMR to 1000 and W/L to 0/0\n\nThis cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    resetBtn.disabled = true;
+
+    const snapshot: Season = {
+      id: generateId(),
+      name: `Season ${nextSeasonNumber}`,
+      endedAt: new Date().toISOString(),
+      leaderboard: sorted.map((p, i) => ({
+        rank: i + 1,
+        playerId: p.id,
+        name: p.name,
+        mmr: p.mmr,
+        wins: p.wins,
+        losses: p.losses,
+      })),
+    };
+
+    data.seasons = [...data.seasons, snapshot];
+    data.players = data.players.map((p) => ({ ...p, mmr: 1000, wins: 0, losses: 0 }));
+
+    await saveData(data);
+    resetBtn.disabled = false;
+    render();
+    renderSeasons();
+  });
+
   await waitForData();
   render();
+  renderSeasons();
 </script>
 
 <style is:global>
@@ -244,6 +389,33 @@ import Layout from '../layouts/Layout.astro';
     font-weight: 600;
   }
 
+  .player-name-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+  }
+
+  .streak-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.15rem 0.45rem;
+    border-radius: 10px;
+    white-space: nowrap;
+  }
+
+  .streak-win {
+    background: rgba(27, 94, 32, 0.12);
+    color: #1b5e20;
+  }
+
+  .streak-loss {
+    background: rgba(57, 73, 171, 0.1);
+    color: #3949ab;
+  }
+
   /* ── MMR column ─────────────────────────────────────────── */
   .col-mmr {
     text-align: center;
@@ -273,6 +445,144 @@ import Layout from '../layouts/Layout.astro';
 
   .col-losses {
     color: #c62828;
+  }
+
+  /* ── Season Reset Zone ──────────────────────────────────── */
+  .season-reset-zone {
+    margin-top: 2rem;
+    padding: 1.25rem 1.5rem;
+    border: 1px solid #e57373;
+    border-radius: 12px;
+    background: #fff5f5;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .season-reset-info {
+    flex: 1;
+  }
+
+  .season-label {
+    display: inline-block;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #c62828;
+    margin-bottom: 0.3rem;
+  }
+
+  .season-reset-info p {
+    font-size: 0.88rem;
+    color: var(--color-text-light, #555);
+    margin: 0;
+  }
+
+  .btn-reset-season {
+    background: #c62828;
+    color: #fff;
+    border: none;
+    padding: 0.6rem 1.25rem;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 0.9rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.2s;
+    flex-shrink: 0;
+  }
+
+  .btn-reset-season:hover { background: #b71c1c; }
+  .btn-reset-season:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  /* ── Past Seasons ────────────────────────────────────────── */
+  .past-seasons-heading {
+    font-size: 1.25rem;
+    color: var(--color-primary, #1b5e20);
+    margin: 2rem 0 1rem;
+  }
+
+  .season-card {
+    background: var(--color-surface, #fff);
+    border: 1px solid var(--color-border, #dde5dd);
+    border-radius: 10px;
+    margin-bottom: 0.75rem;
+    overflow: hidden;
+  }
+
+  .season-card-header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.9rem 1.25rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s;
+  }
+
+  .season-card-header:hover { background: rgba(67,160,71,0.05); }
+
+  .season-card-name {
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--color-primary, #1b5e20);
+    flex: 1;
+  }
+
+  .season-card-date {
+    font-size: 0.82rem;
+    color: var(--color-text-light, #555);
+  }
+
+  .season-chevron {
+    font-size: 0.85rem;
+    color: var(--color-text-light, #555);
+  }
+
+  .season-card-body {
+    border-top: 1px solid var(--color-border, #dde5dd);
+    padding: 0.5rem 0;
+  }
+
+  .season-entry {
+    display: grid;
+    grid-template-columns: 44px 1fr auto auto;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.55rem 1.25rem;
+    font-size: 0.9rem;
+  }
+
+  .season-entry:hover { background: rgba(67,160,71,0.04); }
+
+  .season-entry-rank {
+    font-weight: 700;
+    text-align: center;
+    font-size: 1rem;
+  }
+
+  .season-entry-name { font-weight: 600; }
+
+  .season-entry-mmr {
+    background: var(--color-primary, #1b5e20);
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.15rem 0.5rem;
+    border-radius: 10px;
+  }
+
+  .season-entry-record {
+    font-size: 0.82rem;
+    color: var(--color-text-light, #555);
+    min-width: 70px;
+    text-align: right;
   }
 
   /* ── Responsive ─────────────────────────────────────────── */
