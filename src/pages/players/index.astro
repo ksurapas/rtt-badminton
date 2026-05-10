@@ -62,7 +62,7 @@ import Layout from '../../layouts/Layout.astro';
 <script>
   import { loadData, savePlayers, waitForData } from '../../lib/storage-service';
   import { getInitialMMR } from '../../lib/mmr-engine';
-  import { generateId, DEFAULT_PLACEHOLDER_IMAGE } from '../../lib/utils';
+  import { generateId, DEFAULT_PLACEHOLDER_IMAGE, compressImage } from '../../lib/utils';
   import type { Player } from '../../lib/types';
 
   const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -193,7 +193,8 @@ import Layout from '../../layouts/Layout.astro';
     }
 
     try {
-      pendingPhotoDataUrl = await readFileAsDataUrl(file);
+      const raw = await readFileAsDataUrl(file);
+      pendingPhotoDataUrl = await compressImage(raw);
       photoPreviewImg.src = pendingPhotoDataUrl;
       photoPreview.hidden = false;
     } catch {

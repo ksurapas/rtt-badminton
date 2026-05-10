@@ -35,6 +35,12 @@ if (typeof window !== 'undefined') {
     }
     // Dispatch event so pages can re-render
     window.dispatchEvent(new CustomEvent('rtt-data-updated'));
+  }, (error) => {
+    console.error('RTT Badminton: Firebase read failed:', error.code, error.message);
+    if (!initialized) {
+      initialized = true;
+      initResolve?.();
+    }
   });
 }
 

@@ -35,3 +35,26 @@ export function formatDate(dateString: string): string {
  */
 export const DEFAULT_PLACEHOLDER_IMAGE =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120' fill='%2394a3b8'%3E%3Crect width='120' height='120' fill='%23e2e8f0'/%3E%3Ccircle cx='60' cy='45' r='22'/%3E%3Cellipse cx='60' cy='110' rx='35' ry='30'/%3E%3C/svg%3E";
+
+/**
+ * Compress an image data URL to JPEG at a bounded size.
+ * Resizes so the longest edge is at most maxPx, then encodes at the given quality.
+ * Reduces typical photos from 1–5 MB down to 15–40 KB.
+ */
+export function compressImage(dataUrl: string, maxPx = 300, quality = 0.75): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => reject(new Error('Failed to load image for compression'));
+    img.src = dataUrl;
+  });
+}

@@ -90,7 +90,7 @@ import Layout from '../../layouts/Layout.astro';
 <script>
   import { loadData, saveData, savePlayers, waitForData } from '../../lib/storage-service';
   import { sortPlayersByRanking, getMatchHistoryForPlayer } from '../../lib/ranking';
-  import { formatDate, DEFAULT_PLACEHOLDER_IMAGE } from '../../lib/utils';
+  import { formatDate, DEFAULT_PLACEHOLDER_IMAGE, compressImage } from '../../lib/utils';
   import type { Player, MatchRecord } from '../../lib/types';
 
   function formatBWFName(fullName: string): string {
@@ -360,7 +360,8 @@ import Layout from '../../layouts/Layout.astro';
       }
 
       try {
-        pendingPhotoDataUrl = await readFileAsDataUrl(file);
+        const raw = await readFileAsDataUrl(file);
+        pendingPhotoDataUrl = await compressImage(raw);
         photoEditPreview.src = pendingPhotoDataUrl;
         photoEditPanel.hidden = false;
       } catch {
