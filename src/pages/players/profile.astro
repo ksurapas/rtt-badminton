@@ -88,7 +88,7 @@ import Layout from '../../layouts/Layout.astro';
 </Layout>
 
 <script>
-  import { loadData, saveData, savePlayers, waitForData } from '../../lib/storage-service';
+  import { loadData, saveData, savePlayers, waitForData, loadPlayerPhoto, savePlayerPhoto, deletePlayerPhoto } from '../../lib/storage-service';
   import { sortPlayersByRanking, getMatchHistoryForPlayer } from '../../lib/ranking';
   import { formatDate, DEFAULT_PLACEHOLDER_IMAGE, compressImage } from '../../lib/utils';
   import type { Player, MatchRecord } from '../../lib/types';
@@ -146,8 +146,12 @@ import Layout from '../../layouts/Layout.astro';
     historySection.hidden = true;
     notFound.hidden = false;
   } else {
-    heroPhoto.src = player.profilePicture ?? DEFAULT_PLACEHOLDER_IMAGE;
+    // Show placeholder immediately, then swap in the real photo when it arrives
+    heroPhoto.src = DEFAULT_PLACEHOLDER_IMAGE;
     heroPhoto.alt = `${player.name} profile photo`;
+    loadPlayerPhoto(playerId).then((url) => {
+      if (url) heroPhoto.src = url;
+    });
     heroName.textContent = formatBWFName(player.name);
 
     const ranked = sortPlayersByRanking(data.players);
@@ -369,17 +373,22 @@ import Layout from '../../layouts/Layout.astro';
       }
     });
 
-    savePhotoBtn.addEventListener('click', () => {
+    savePhotoBtn.addEventListener('click', async () => {
       if (!pendingPhotoDataUrl) return;
-      const freshData = loadData();
-      const targetPlayer = freshData.players.find((p) => p.id === playerId);
-      if (!targetPlayer) return;
-      targetPlayer.profilePicture = pendingPhotoDataUrl;
-      savePlayers(freshData.players);
-      heroPhoto.src = pendingPhotoDataUrl;
-      photoEditPanel.hidden = true;
-      pendingPhotoDataUrl = null;
-      editPhotoInput.value = '';
+      savePhotoBtn.disabled = true;
+      savePhotoBtn.textContent = 'Saving…';
+      photoEditError.textContent = '';
+      try {
+        await savePlayerPhoto(playerId, pendingPhotoDataUrl);
+        heroPhoto.src = pendingPhotoDataUrl;
+        photoEditPanel.hidden = true;
+        pendingPhotoDataUrl = null;
+        editPhotoInput.value = '';
+      } catch {
+        photoEditError.textContent = 'Save failed. Please try again.';
+      }
+      savePhotoBtn.disabled = false;
+      savePhotoBtn.textContent = 'Save Photo';
     });
 
     cancelPhotoBtn.addEventListener('click', () => {
@@ -400,12 +409,13 @@ import Layout from '../../layouts/Layout.astro';
       if (!confirmed) return;
 
       deleteBtn.disabled = true;
+      deleteBtn.textContent = 'Deleting…';
       const freshData = loadData();
       freshData.players = freshData.players.filter((p) => p.id !== playerId);
       freshData.matches = freshData.matches.filter(
         (m) => !m.teamA.includes(playerId) && !m.teamB.includes(playerId)
       );
-      await saveData(freshData);
+      await Promise.all([saveData(freshData), deletePlayerPhoto(playerId)]);
       window.location.href = `${BASE}players/`;
     });
   }

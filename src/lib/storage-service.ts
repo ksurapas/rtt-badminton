@@ -1,8 +1,9 @@
 import { db } from './firebase';
-import { ref, set, onValue, get } from 'firebase/database';
+import { ref, set, onValue, get, remove } from 'firebase/database';
 import type { AppData, Player, MatchRecord, Bill } from './types';
 
 const DB_PATH = 'rtt-badminton-data';
+const PHOTOS_PATH = 'rtt-badminton-photos';
 
 function emptyAppData(): AppData {
   return { players: [], matches: [], bills: [], seasons: [] };
@@ -99,6 +100,27 @@ export function saveBills(bills: Bill[]): void {
   const data = loadData();
   data.bills = bills;
   saveData(data);
+}
+
+// ── Per-player photo storage (separate path to avoid bulk downloads) ──
+
+/** Fetch a single player's photo. Returns null if none saved. */
+export async function loadPlayerPhoto(playerId: string): Promise<string | null> {
+  const photoRef = ref(db, `${PHOTOS_PATH}/${playerId}`);
+  const snapshot = await get(photoRef);
+  return snapshot.val() as string | null;
+}
+
+/** Save a compressed base64 photo for one player. */
+export async function savePlayerPhoto(playerId: string, dataUrl: string): Promise<void> {
+  const photoRef = ref(db, `${PHOTOS_PATH}/${playerId}`);
+  await set(photoRef, dataUrl);
+}
+
+/** Remove a player's photo (call when deleting the player). */
+export async function deletePlayerPhoto(playerId: string): Promise<void> {
+  const photoRef = ref(db, `${PHOTOS_PATH}/${playerId}`);
+  await remove(photoRef);
 }
 
 // Keep these for backward compatibility

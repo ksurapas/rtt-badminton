@@ -60,9 +60,9 @@ import Layout from '../../layouts/Layout.astro';
 </Layout>
 
 <script>
-  import { loadData, savePlayers, waitForData } from '../../lib/storage-service';
+  import { loadData, savePlayers, savePlayerPhoto, waitForData } from '../../lib/storage-service';
   import { getInitialMMR } from '../../lib/mmr-engine';
-  import { generateId, DEFAULT_PLACEHOLDER_IMAGE, compressImage } from '../../lib/utils';
+  import { generateId, compressImage } from '../../lib/utils';
   import type { Player } from '../../lib/types';
 
   const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -95,24 +95,30 @@ import Layout from '../../layouts/Layout.astro';
     return `${firstNames} ${lastName}`;
   }
 
-  /** Build a player card element */
+  const AVATAR_COLORS = ['#1b5e20','#1565c0','#6a1b9a','#bf360c','#00695c','#4e342e','#e65100','#37474f'];
+
+  function avatarColor(name: string): string {
+    return AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length];
+  }
+
+  /** Build a player card with an initials avatar (no photo download). */
   function createCardElement(player: Player): HTMLAnchorElement {
     const card = document.createElement('a');
     card.href = `${BASE}players/profile/?id=${player.id}`;
     card.className = 'player-card';
 
-    const imgSrc = player.profilePicture ?? DEFAULT_PLACEHOLDER_IMAGE;
     const displayName = formatBWFName(player.name);
+    const initial = player.name.trim().charAt(0).toUpperCase();
+    const color = avatarColor(player.name);
 
-    // Build with DOM methods to avoid breaking HTML with base64 strings
     const photoWrapper = document.createElement('div');
     photoWrapper.className = 'card-photo-wrapper';
-    const img = document.createElement('img');
-    img.src = imgSrc;
-    img.alt = `${player.name} profile photo`;
-    img.className = 'card-photo';
-    img.loading = 'lazy';
-    photoWrapper.appendChild(img);
+
+    const avatar = document.createElement('div');
+    avatar.className = 'card-avatar';
+    avatar.style.background = color;
+    avatar.textContent = initial;
+    photoWrapper.appendChild(avatar);
 
     const body = document.createElement('div');
     body.className = 'card-body';
@@ -203,7 +209,9 @@ import Layout from '../../layouts/Layout.astro';
   });
 
   // Form submission
-  form.addEventListener('submit', (e) => {
+  const submitBtn = form.querySelector('button[type="submit"]') as HTMLButtonElement;
+
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
     nameError.textContent = '';
     photoError.textContent = '';
@@ -218,12 +226,24 @@ import Layout from '../../layouts/Layout.astro';
     const newPlayer: Player = {
       id: generateId(),
       name,
-      profilePicture: pendingPhotoDataUrl,
+      profilePicture: null,
       mmr: getInitialMMR(),
       wins: 0,
       losses: 0,
       createdAt: new Date().toISOString(),
     };
+
+    if (pendingPhotoDataUrl) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Saving…';
+      try {
+        await savePlayerPhoto(newPlayer.id, pendingPhotoDataUrl);
+      } catch {
+        photoError.textContent = 'Photo save failed. Player saved without photo.';
+      }
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Add Player';
+    }
 
     const data = loadData();
     data.players.push(newPlayer);
@@ -329,13 +349,19 @@ import Layout from '../../layouts/Layout.astro';
     padding: 1.5rem 1rem 1rem;
   }
 
-  .card-photo {
-    width: 100px;
-    height: 100px;
-    object-fit: cover;
+  .card-avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
     border: 3px solid rgba(255, 255, 255, 0.9);
-    background: var(--color-bg, #f5f7f5);
-    border-radius: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: -1px;
+    user-select: none;
   }
 
   .card-body {

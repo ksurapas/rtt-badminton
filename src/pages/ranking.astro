@@ -29,8 +29,13 @@ import Layout from '../layouts/Layout.astro';
 <script>
   import { loadData, saveData, waitForData } from '../lib/storage-service';
   import { sortPlayersByRanking, getMatchHistoryForPlayer } from '../lib/ranking';
-  import { DEFAULT_PLACEHOLDER_IMAGE, generateId, formatDate } from '../lib/utils';
+  import { generateId, formatDate } from '../lib/utils';
   import type { Player, MatchRecord, Season } from '../lib/types';
+
+  const AVATAR_COLORS = ['#1b5e20','#1565c0','#6a1b9a','#bf360c','#00695c','#4e342e','#e65100','#37474f'];
+  function avatarColor(name: string): string {
+    return AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length];
+  }
 
   const container = document.getElementById('ranking-container')!;
   const emptyState = document.getElementById('empty-state')!;
@@ -88,8 +93,6 @@ import Layout from '../layouts/Layout.astro';
       else if (rank === 2) row.classList.add('rank-silver');
       else if (rank === 3) row.classList.add('rank-bronze');
 
-      const imgSrc = player.profilePicture ?? DEFAULT_PLACEHOLDER_IMAGE;
-
       const streak = getStreak(player.id, matches);
       let streakBadge = '';
       if (streak && streak.count >= 2) {
@@ -103,15 +106,14 @@ import Layout from '../layouts/Layout.astro';
       playerCell.className = 'col-player';
       const playerInfo = document.createElement('div');
       playerInfo.className = 'player-info';
-      const thumb = document.createElement('img');
-      thumb.src = imgSrc;
-      thumb.alt = player.name;
-      thumb.className = 'player-thumb';
-      thumb.loading = 'lazy';
+      const avatar = document.createElement('div');
+      avatar.className = 'player-thumb player-avatar';
+      avatar.style.background = avatarColor(player.name);
+      avatar.textContent = player.name.trim().charAt(0).toUpperCase();
       const nameCell = document.createElement('div');
       nameCell.className = 'player-name-cell';
       nameCell.innerHTML = `<span class="player-name">${player.name}</span>${streakBadge}`;
-      playerInfo.appendChild(thumb);
+      playerInfo.appendChild(avatar);
       playerInfo.appendChild(nameCell);
       playerCell.appendChild(playerInfo);
 
@@ -379,10 +381,17 @@ import Layout from '../layouts/Layout.astro';
     max-width: 40px;
     max-height: 40px;
     border-radius: 50%;
-    object-fit: cover;
-    background: var(--color-bg, #f5f7f5);
     border: 2px solid var(--color-border, #dde5dd);
     flex-shrink: 0;
+  }
+
+  .player-avatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 700;
+    font-size: 1rem;
   }
 
   .player-name {
@@ -596,6 +605,11 @@ import Layout from '../layouts/Layout.astro';
     .player-thumb {
       width: 32px;
       height: 32px;
+      min-width: 32px;
+      min-height: 32px;
+      max-width: 32px;
+      max-height: 32px;
+      font-size: 0.85rem;
     }
 
     .col-rank {
