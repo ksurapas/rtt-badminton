@@ -3,7 +3,8 @@
     "allow": [
       "PowerShell(Get-ChildItem -Force | Select-Object Name, @{N=\"Type\";E={if\\($_.PSIsContainer\\){\"Directory\"}else{\"File\"}}} | Format-Table -AutoSize)",
       "Bash(xargs wc -l)",
-      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\User\\\\OneDrive\\\\Documents\\\\Python\\\\Badminton\\\\Badminton\" -Exclude \"node_modules\" -Recurse -File | Where-Object { $_.FullName -notmatch \"node_modules\" -and $_.Extension -match \"\\\\.\\(py|js|ts|vue|jsx|tsx|astro|env|sql|json|md\\)$\" } | Select-Object FullName)"
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\User\\\\OneDrive\\\\Documents\\\\Python\\\\Badminton\\\\Badminton\" -Exclude \"node_modules\" -Recurse -File | Where-Object { $_.FullName -notmatch \"node_modules\" -and $_.Extension -match \"\\\\.\\(py|js|ts|vue|jsx|tsx|astro|env|sql|json|md\\)$\" } | Select-Object FullName)",
+      "Bash(Select-String -Pattern \"gitignore|\\\\.env\")"
     ]
   }
 }

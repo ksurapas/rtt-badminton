@@ -146,12 +146,8 @@ import Layout from '../../layouts/Layout.astro';
     historySection.hidden = true;
     notFound.hidden = false;
   } else {
-    // Show placeholder immediately, then swap in the real photo when it arrives
-    heroPhoto.src = DEFAULT_PLACEHOLDER_IMAGE;
+    heroPhoto.src = loadPlayerPhoto(playerId) ?? DEFAULT_PLACEHOLDER_IMAGE;
     heroPhoto.alt = `${player.name} profile photo`;
-    loadPlayerPhoto(playerId).then((url) => {
-      if (url) heroPhoto.src = url;
-    });
     heroName.textContent = formatBWFName(player.name);
 
     const ranked = sortPlayersByRanking(data.players);
@@ -379,8 +375,8 @@ import Layout from '../../layouts/Layout.astro';
       savePhotoBtn.textContent = 'Saving…';
       photoEditError.textContent = '';
       try {
-        await savePlayerPhoto(playerId, pendingPhotoDataUrl);
-        heroPhoto.src = pendingPhotoDataUrl;
+        const url = await savePlayerPhoto(playerId, pendingPhotoDataUrl);
+        heroPhoto.src = url;
         photoEditPanel.hidden = true;
         pendingPhotoDataUrl = null;
         editPhotoInput.value = '';

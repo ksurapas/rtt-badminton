@@ -55,10 +55,51 @@ import Layout from '../layouts/Layout.astro';
     return { type: firstWon ? 'win' : 'loss', count };
   }
 
+  function buildPlayerCell(player: Player): HTMLTableCellElement {
+    const playerCell = document.createElement('td');
+    playerCell.className = 'col-player';
+    const playerInfo = document.createElement('div');
+    playerInfo.className = 'player-info';
+    let avatar: HTMLElement;
+    if (player.profilePicture) {
+      const img = document.createElement('img');
+      img.className = 'player-thumb';
+      img.src = player.profilePicture;
+      img.alt = player.name;
+      avatar = img;
+    } else {
+      const div = document.createElement('div');
+      div.className = 'player-thumb player-avatar';
+      div.style.background = avatarColor(player.name);
+      div.textContent = player.name.trim().charAt(0).toUpperCase();
+      avatar = div;
+    }
+    const nameCell = document.createElement('div');
+    nameCell.className = 'player-name-cell';
+    nameCell.innerHTML = `<span class="player-name">${player.name}</span>`;
+    playerInfo.appendChild(avatar);
+    playerInfo.appendChild(nameCell);
+    playerCell.appendChild(playerInfo);
+    return playerCell;
+  }
+
   function render() {
     container.querySelector('.ranking-table')?.remove();
-    const { players, matches } = loadData();
+    const { players, matches, seasons } = loadData();
     const sorted = sortPlayersByRanking(players);
+
+    const lastSeason = seasons.length > 0
+      ? [...seasons].sort((a, b) => new Date(b.endedAt).getTime() - new Date(a.endedAt).getTime())[0]
+      : null;
+    const seasonMatches = lastSeason
+      ? matches.filter((m) => new Date(m.date) > new Date(lastSeason.endedAt))
+      : matches;
+
+    const hasSeasonMatch = (p: Player) =>
+      seasonMatches.some((m) => m.teamA.includes(p.id) || m.teamB.includes(p.id));
+
+    const active = sorted.filter(hasSeasonMatch);
+    const inactive = sorted.filter((p) => !hasSeasonMatch(p));
 
     if (sorted.length === 0) {
       emptyState.hidden = false;
@@ -85,7 +126,7 @@ import Layout from '../layouts/Layout.astro';
 
     const tbody = document.createElement('tbody');
 
-    sorted.forEach((player: Player, index: number) => {
+    active.forEach((player: Player, index: number) => {
       const rank = index + 1;
       const row = document.createElement('tr');
 
@@ -93,7 +134,7 @@ import Layout from '../layouts/Layout.astro';
       else if (rank === 2) row.classList.add('rank-silver');
       else if (rank === 3) row.classList.add('rank-bronze');
 
-      const streak = getStreak(player.id, matches);
+      const streak = getStreak(player.id, seasonMatches);
       let streakBadge = '';
       if (streak && streak.count >= 2) {
         const cls = streak.type === 'win' ? 'streak-win' : 'streak-loss';
@@ -102,20 +143,8 @@ import Layout from '../layouts/Layout.astro';
         streakBadge = `<span class="streak-badge ${cls}">${icon} ${letter}${streak.count}</span>`;
       }
 
-      const playerCell = document.createElement('td');
-      playerCell.className = 'col-player';
-      const playerInfo = document.createElement('div');
-      playerInfo.className = 'player-info';
-      const avatar = document.createElement('div');
-      avatar.className = 'player-thumb player-avatar';
-      avatar.style.background = avatarColor(player.name);
-      avatar.textContent = player.name.trim().charAt(0).toUpperCase();
-      const nameCell = document.createElement('div');
-      nameCell.className = 'player-name-cell';
-      nameCell.innerHTML = `<span class="player-name">${player.name}</span>${streakBadge}`;
-      playerInfo.appendChild(avatar);
-      playerInfo.appendChild(nameCell);
-      playerCell.appendChild(playerInfo);
+      const playerCell = buildPlayerCell(player);
+      playerCell.querySelector('.player-name-cell')!.innerHTML +=  streakBadge;
 
       row.innerHTML = `
         <td class="col-rank"><span class="rank-number">${rank}</span></td>
@@ -124,7 +153,24 @@ import Layout from '../layouts/Layout.astro';
         <td class="col-losses">${player.losses}</td>
       `;
       row.insertBefore(playerCell, row.children[1]);
+      tbody.appendChild(row);
+    });
 
+    inactive.forEach((player: Player) => {
+      const row = document.createElement('tr');
+      row.classList.add('rank-inactive');
+
+      const playerCell = buildPlayerCell(player);
+      playerCell.querySelector('.player-name-cell')!.innerHTML +=
+        `<span class="no-play-badge">No Play</span>`;
+
+      row.innerHTML = `
+        <td class="col-rank"><span class="rank-number rank-number--inactive">–</span></td>
+        <td class="col-mmr"><span class="mmr-value">${player.mmr}</span></td>
+        <td class="col-wins">${player.wins}</td>
+        <td class="col-losses">${player.losses}</td>
+      `;
+      row.insertBefore(playerCell, row.children[1]);
       tbody.appendChild(row);
     });
 
@@ -413,6 +459,30 @@ import Layout from '../layouts/Layout.astro';
     padding: 0.15rem 0.45rem;
     border-radius: 10px;
     white-space: nowrap;
+  }
+
+  .rank-inactive {
+    opacity: 0.45;
+  }
+
+  .rank-number--inactive {
+    background: transparent;
+    color: var(--color-text-light, #999);
+    font-size: 1.1rem;
+  }
+
+  .no-play-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 0.15rem 0.45rem;
+    border-radius: 10px;
+    white-space: nowrap;
+    background: rgba(0, 0, 0, 0.07);
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
 
   .streak-win {

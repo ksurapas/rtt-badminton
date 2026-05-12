@@ -114,11 +114,19 @@ import Layout from '../../layouts/Layout.astro';
     const photoWrapper = document.createElement('div');
     photoWrapper.className = 'card-photo-wrapper';
 
-    const avatar = document.createElement('div');
-    avatar.className = 'card-avatar';
-    avatar.style.background = color;
-    avatar.textContent = initial;
-    photoWrapper.appendChild(avatar);
+    if (player.profilePicture) {
+      const img = document.createElement('img');
+      img.className = 'card-photo';
+      img.src = player.profilePicture;
+      img.alt = player.name;
+      photoWrapper.appendChild(img);
+    } else {
+      const avatar = document.createElement('div');
+      avatar.className = 'card-avatar';
+      avatar.style.background = color;
+      avatar.textContent = initial;
+      photoWrapper.appendChild(avatar);
+    }
 
     const body = document.createElement('div');
     body.className = 'card-body';
@@ -237,7 +245,7 @@ import Layout from '../../layouts/Layout.astro';
       submitBtn.disabled = true;
       submitBtn.textContent = 'Saving…';
       try {
-        await savePlayerPhoto(newPlayer.id, pendingPhotoDataUrl);
+        newPlayer.profilePicture = await savePlayerPhoto(newPlayer.id, pendingPhotoDataUrl);
       } catch {
         photoError.textContent = 'Photo save failed. Player saved without photo.';
       }
@@ -362,6 +370,15 @@ import Layout from '../../layouts/Layout.astro';
     color: #fff;
     letter-spacing: -1px;
     user-select: none;
+  }
+
+  .card-photo {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    border: 3px solid rgba(255, 255, 255, 0.9);
+    object-fit: cover;
+    display: block;
   }
 
   .card-body {

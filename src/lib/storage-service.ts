@@ -1,9 +1,8 @@
 import { db } from './firebase';
-import { ref, set, onValue, get, remove } from 'firebase/database';
+import { ref, set, onValue } from 'firebase/database';
 import type { AppData, Player, MatchRecord, Bill } from './types';
 
 const DB_PATH = 'rtt-badminton-data';
-const PHOTOS_PATH = 'rtt-badminton-photos';
 
 function emptyAppData(): AppData {
   return { players: [], matches: [], bills: [], seasons: [] };
@@ -102,25 +101,48 @@ export function saveBills(bills: Bill[]): void {
   saveData(data);
 }
 
-// ── Per-player photo storage (separate path to avoid bulk downloads) ──
+// ── Per-player photo storage via Cloudinary ──────────────────
 
-/** Fetch a single player's photo. Returns null if none saved. */
-export async function loadPlayerPhoto(playerId: string): Promise<string | null> {
-  const photoRef = ref(db, `${PHOTOS_PATH}/${playerId}`);
-  const snapshot = await get(photoRef);
-  return snapshot.val() as string | null;
+const CLOUDINARY_CLOUD = import.meta.env.PUBLIC_CLOUDINARY_CLOUD_NAME as string;
+const CLOUDINARY_PRESET = import.meta.env.PUBLIC_CLOUDINARY_UPLOAD_PRESET as string;
+
+/**
+ * Upload a compressed image to Cloudinary and update player.profilePicture in Firebase.
+ * Returns the Cloudinary HTTPS URL for immediate display.
+ */
+export async function savePlayerPhoto(playerId: string, dataUrl: string): Promise<string> {
+  const form = new FormData();
+  form.append('file', dataUrl);
+  form.append('upload_preset', CLOUDINARY_PRESET);
+  form.append('folder', 'rtt-badminton');
+
+  const res = await fetch(
+    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`,
+    { method: 'POST', body: form }
+  );
+  if (!res.ok) throw new Error(`Cloudinary upload failed: ${res.status}`);
+  const json = await res.json();
+  const url: string = json.secure_url;
+
+  // Persist the URL on the player record so it loads instantly next time
+  const data = loadData();
+  const player = data.players.find((p) => p.id === playerId);
+  if (player) {
+    player.profilePicture = url;
+    await saveData(data);
+  }
+
+  return url;
 }
 
-/** Save a compressed base64 photo for one player. */
-export async function savePlayerPhoto(playerId: string, dataUrl: string): Promise<void> {
-  const photoRef = ref(db, `${PHOTOS_PATH}/${playerId}`);
-  await set(photoRef, dataUrl);
+/** Read a player's photo URL from the in-memory cache (no network call needed). */
+export function loadPlayerPhoto(playerId: string): string | null {
+  return loadData().players.find((p) => p.id === playerId)?.profilePicture ?? null;
 }
 
-/** Remove a player's photo (call when deleting the player). */
-export async function deletePlayerPhoto(playerId: string): Promise<void> {
-  const photoRef = ref(db, `${PHOTOS_PATH}/${playerId}`);
-  await remove(photoRef);
+/** Clear a player's photo reference when the player is deleted. */
+export async function deletePlayerPhoto(_playerId: string): Promise<void> {
+  // The player record is removed by the caller via saveData; nothing else to do here.
 }
 
 // Keep these for backward compatibility
