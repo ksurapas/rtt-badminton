@@ -209,9 +209,9 @@ export function computeAchievements(
   }
   const maxSingleDay = Object.values(dayMap).length > 0 ? Math.max(...Object.values(dayMap)) : 0;
 
-  // Rank 1: currently #1 in rankings
+  // Rank 1: currently #1 in rankings AND has played at least one match
   const ranked = sortPlayersByRanking(allPlayers);
-  const isRankOne = ranked[0]?.id === player.id;
+  const isRankOne = ranked[0]?.id === player.id && totalMatches > 0;
 
   return ACHIEVEMENTS.map((achievement): AchievementStatus => {
     switch (achievement.id) {
